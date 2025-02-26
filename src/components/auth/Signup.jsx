@@ -45,9 +45,15 @@ const Signup = () => {
 
     try {
       setLoading(true);
-      await signup(email, password, { firstName, lastName });
-      navigate('/login', { state: { message: 'Account created successfully! Please login.' } });
+      const response = await signup(email, password, { firstName, lastName });
+      
+      if (response.success) {
+        navigate('/dashboard');
+      } else {
+        setError(response.message || 'Registration failed');
+      }
     } catch (error) {
+      console.error('Signup error:', error);
       setError(error.message || 'Failed to create account');
     } finally {
       setLoading(false);

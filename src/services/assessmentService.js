@@ -1,4 +1,4 @@
-import { assessment } from './api';
+import api, { assessment } from './api';
 
 // Assessment types
 export const ASSESSMENT_TYPES = {
@@ -15,36 +15,45 @@ export const ASSESSMENT_TYPES = {
 };
 
 // Backward compatibility for existing components
-export const assessmentTypes = ASSESSMENT_TYPES;
+export const assessmentTypes = {
+  FACIAL_SYMMETRY: ASSESSMENT_TYPES.FACIAL_SYMMETRY,
+  NECK_MOBILITY: ASSESSMENT_TYPES.NECK_MOBILITY,
+  ...ASSESSMENT_TYPES
+};
 
 // Assessment service implementation
 export const assessmentService = {
   // Save assessment result
-  saveAssessment: async (userId, type, data) => {
+  async saveAssessment(userId, type, metrics) {
     try {
-      // Ensure data has all required fields
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      // Process metrics based on assessment type
+      const processedMetrics = processAssessmentData(type, metrics);
+
       const assessmentData = {
-        ...data,
-        user: userId,
-        type,
-        status: data.status || 'COMPLETED',
-        createdAt: new Date().toISOString()
+        userId,
+        type: ASSESSMENT_TYPES[type] || type,  // Use enum value or original type if already correct
+        data: processedMetrics,    // Raw data for future reference
+        metrics: processedMetrics,  // Processed metrics for validation
+        timestamp: new Date().toISOString()
       };
 
-      // Validate required fields
-      if (!assessmentData.data || typeof assessmentData.data !== 'object') {
-        throw new Error('Assessment data is required');
-      }
+      console.log('Saving assessment data:', {
+        ...assessmentData,
+        userId: '[REDACTED]'  // Log without sensitive data
+      });
 
-      if (!assessmentData.metrics || typeof assessmentData.metrics !== 'object') {
-        throw new Error('Assessment metrics are required');
-      }
-
-      // Send to API
-      const response = await assessment.save(assessmentData);
+      const response = await api.post('/assessments', assessmentData);
       return response.data;
     } catch (error) {
       console.error('Error saving assessment:', error);
+      if (error.response?.data) {
+        console.error('Server error details:', error.response.data);
+      }
       throw error;
     }
   },
@@ -136,12 +145,22 @@ export const assessmentService = {
 const processAssessmentData = (type, data) => {
   switch (type) {
     case ASSESSMENT_TYPES.GAIT:
-      return {
-        stability: data.stability || 0,
-        balance: data.balance || 0,
-        symmetry: data.symmetry || 0,
-        jointAngles: data.jointAngles || []
+      // Process raw gait analysis data into meaningful metrics
+      const processedGaitData = {
+        stability: calculateStabilityScore(data) || data.stability || 0,
+        balance: calculateBalanceScore(data) || data.balance || 0,
+        symmetry: calculateSymmetryScore(data) || data.symmetry || 0,
+        jointAngles: processJointAngles(data.jointAngles) || []
       };
+      
+      // Add overall score
+      processedGaitData.overallScore = (
+        processedGaitData.stability * 0.4 +
+        processedGaitData.balance * 0.3 +
+        processedGaitData.symmetry * 0.3
+      );
+      
+      return processedGaitData;
     case ASSESSMENT_TYPES.BALANCE:
       return {
         overallBalance: data.overallBalance || 0,
@@ -176,7 +195,11 @@ const processAssessmentData = (type, data) => {
         symmetryScore: data.symmetryScore || 0,
         eyeAlignment: data.eyeAlignment || 0,
         mouthAlignment: data.mouthAlignment || 0,
-        overallSymmetry: data.overallSymmetry || 0
+        overallSymmetry: data.overallSymmetry || 0,
+        eyeSymmetry: data.eyeSymmetry || 0,
+        mouthSymmetry: data.mouthSymmetry || 0,
+        jawSymmetry: data.jawSymmetry || 0,
+        landmarks: data.landmarks || {}
       };
     case ASSESSMENT_TYPES.TREMOR:
       return {
@@ -199,11 +222,16 @@ const processAssessmentData = (type, data) => {
         overallQuality: data.overallQuality || 0
       };
     case ASSESSMENT_TYPES.FINGER_TAPPING:
+      const overallScore = data.overallScore || 
+        ((data.tapsPerSecond || 0) * 0.4 + 
+         (data.accuracy || 0) * 0.3 + 
+         (data.rhythmScore || 0) * 0.3);
+      
       return {
-        frequency: data.frequency || 0,
-        amplitude: data.amplitude || 0,
-        rhythm: data.rhythm || 0,
-        overallScore: data.overallScore || 0
+        frequency: data.tapsPerSecond || data.frequency || 0,
+        amplitude: data.accuracy || data.amplitude || 0,
+        rhythm: data.rhythmScore || data.rhythm || 0,
+        overallScore: overallScore
       };
     default:
       return data;
@@ -265,6 +293,28 @@ const getRecentScores = (type, assessments, count) => {
     .slice(0, count)
     .map(assessment => calculateAverageScore(type, [assessment]))
     .filter(score => !isNaN(score));
+};
+
+// Helper functions for gait analysis
+const calculateStabilityScore = (data) => {
+  // TODO: Implement stability calculation based on joint movements
+  return data.stability;
+};
+
+const calculateBalanceScore = (data) => {
+  // TODO: Implement balance calculation based on center of mass
+  return data.balance;
+};
+
+const calculateSymmetryScore = (data) => {
+  // TODO: Implement symmetry calculation based on left/right comparison
+  return data.symmetry;
+};
+
+const processJointAngles = (angles) => {
+  if (!Array.isArray(angles)) return [];
+  // TODO: Process and normalize joint angles
+  return angles;
 };
 
 export default assessmentService; 

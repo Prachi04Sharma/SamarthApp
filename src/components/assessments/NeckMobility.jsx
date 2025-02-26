@@ -1,127 +1,112 @@
 import { useState, useRef, useEffect } from 'react';
-import { Box } from '@mui/material';
+import { Box, Button, Typography, Grid, CircularProgress, Alert } from '@mui/material';
 import AssessmentLayout from '../common/AssessmentLayout';
-import { initializeModels, detectFaces, processFacialMetrics } from '../../services/mlService';
+import { MLService } from '../../services/mlService';
 import { assessmentService, assessmentTypes } from '../../services/assessmentService';
 
 const NeckMobility = ({ userId, onComplete }) => {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isAssessing, setIsAssessing] = useState(false);
   const [error, setError] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const frameProcessorRef = useRef(null);
-  const [mobilityData, setMobilityData] = useState([]);
+  const [currentPosition, setCurrentPosition] = useState('neutral');
+  const [positionComplete, setPositionComplete] = useState({
+    neutral: false,
+    flexion: false,
+    extension: false,
+    rotation: false
+  });
   const assessmentStartTime = useRef(null);
+  const canvasRef = useRef(null);
+  const [showGuide, setShowGuide] = useState(true);
 
   useEffect(() => {
-    const loadModels = async () => {
-      try {
-        await initializeModels();
-        setIsLoading(false);
-      } catch (err) {
-        setError('Failed to load ML models. Please refresh the page and try again.');
-        setIsLoading(false);
-      }
-    };
-    loadModels();
-
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
-      if (frameProcessorRef.current) {
-        cancelAnimationFrame(frameProcessorRef.current);
-      }
     };
   }, []);
 
-  const processFrame = async () => {
-    if (!videoRef.current || !isAssessing) return;
+  useEffect(() => {
+    if (isAssessing) {
+      const drawCanvas = () => {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas) return;
 
+        const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Draw video frame
+        ctx.save();
+        ctx.scale(-1, 1); // Mirror the image
+        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        // Draw guide overlay based on current position
+        drawGuideOverlay(ctx);
+
+        requestAnimationFrame(drawCanvas);
+      };
+
+      drawCanvas();
+    }
+  }, [isAssessing, currentPosition]);
+
+  const captureFrame = async () => {
+    if (!videoRef.current) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoRef.current, 0, 0);
+    
+    return new Promise(resolve => {
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.95);
+    });
+  };
+
+  const measurePosition = async (position) => {
     try {
-      const detections = await detectFaces(videoRef.current);
-      
-      if (detections.length > 0) {
-        const detection = detections[0];
-        const metrics = processFacialMetrics(detection);
-        
-        const timestamp = Date.now();
-        const newData = {
-          timestamp,
-          faceAngle: metrics.faceAngle,
-          landmarks: metrics.landmarks
-        };
-        
-        setMobilityData(prev => [...prev, newData]);
-
-        // Update metrics in real-time
-        const currentMetrics = calculateMetrics([...mobilityData, newData]);
-        setMetrics(currentMetrics);
+      const imageBlob = await captureFrame();
+      if (!imageBlob) {
+        throw new Error('Failed to capture image');
       }
 
-      frameProcessorRef.current = requestAnimationFrame(processFrame);
+      let result;
+      if (position === 'neutral') {
+        result = await MLService.setNeckNeutral(imageBlob);
+      } else {
+        result = await MLService.measureNeckPosition(imageBlob, position);
+      }
+
+      if (result.success) {
+        setPositionComplete(prev => ({ ...prev, [position]: true }));
+        
+        // Move to next position
+        if (position === 'neutral') setCurrentPosition('flexion');
+        else if (position === 'flexion') setCurrentPosition('extension');
+        else if (position === 'extension') setCurrentPosition('rotation');
+        else if (position === 'rotation') {
+          // Get final results
+          const finalResults = await MLService.getNeckMobilityResults();
+          if (finalResults.success) {
+            setMetrics(finalResults.metrics);
+          }
+          stopAssessment();
+        }
+      } else {
+        setError(result.error || 'Failed to measure position. Please try again.');
+      }
     } catch (err) {
-      console.error('Frame processing error:', err);
-      setError('Error processing neck mobility. Please try again.');
-      stopAssessment();
+      console.error('Error measuring position:', err);
+      setError('Error measuring neck position. Please try again.');
     }
-  };
-
-  const calculateMetrics = (data) => {
-    if (data.length < 2) return null;
-
-    // Calculate range of motion
-    const rollAngles = data.map(point => point.faceAngle.roll);
-    const yawAngles = data.map(point => point.faceAngle.yaw);
-
-    const rollRange = {
-      min: Math.min(...rollAngles),
-      max: Math.max(...rollAngles)
-    };
-    rollRange.total = Math.abs(rollRange.max - rollRange.min);
-
-    const yawRange = {
-      min: Math.min(...yawAngles),
-      max: Math.max(...yawAngles)
-    };
-    yawRange.total = Math.abs(yawRange.max - yawRange.min);
-
-    // Calculate movement speed
-    const rollSpeeds = rollAngles.map((angle, i) => 
-      i > 0 ? Math.abs(angle - rollAngles[i-1]) : 0
-    ).slice(1);
-
-    const yawSpeeds = yawAngles.map((angle, i) => 
-      i > 0 ? Math.abs(angle - yawAngles[i-1]) : 0
-    ).slice(1);
-
-    const averageSpeed = {
-      roll: rollSpeeds.reduce((a, b) => a + b, 0) / rollSpeeds.length,
-      yaw: yawSpeeds.reduce((a, b) => a + b, 0) / yawSpeeds.length
-    };
-
-    // Calculate movement stability
-    const rollVariance = calculateVariance(rollSpeeds);
-    const yawVariance = calculateVariance(yawSpeeds);
-    const stability = Math.max(0, 100 - ((rollVariance + yawVariance) * 10));
-
-    const duration = ((data[data.length - 1].timestamp - assessmentStartTime.current) / 1000).toFixed(1);
-
-    return {
-      rollRange,
-      yawRange,
-      averageSpeed,
-      stability: stability.toFixed(2),
-      dataPoints: data.length,
-      duration
-    };
-  };
-
-  const calculateVariance = (values) => {
-    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    return values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
   };
 
   const startAssessment = async () => {
@@ -131,11 +116,14 @@ const NeckMobility = ({ userId, onComplete }) => {
       streamRef.current = stream;
       setIsAssessing(true);
       setError(null);
-      setMobilityData([]);
+      setCurrentPosition('neutral');
+      setPositionComplete({
+        neutral: false,
+        flexion: false,
+        extension: false,
+        rotation: false
+      });
       assessmentStartTime.current = Date.now();
-      
-      // Start processing frames
-      processFrame();
     } catch (err) {
       setError('Failed to access camera. Please check camera permissions and try again.');
     }
@@ -145,26 +133,19 @@ const NeckMobility = ({ userId, onComplete }) => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
-    if (frameProcessorRef.current) {
-      cancelAnimationFrame(frameProcessorRef.current);
-    }
     setIsAssessing(false);
 
-    // Calculate final metrics
-    if (mobilityData.length > 0) {
-      const finalMetrics = calculateMetrics(mobilityData);
-      setMetrics(finalMetrics);
-
+    if (metrics) {
       try {
         // Save assessment results
         await assessmentService.saveAssessment(
           userId,
           assessmentTypes.NECK_MOBILITY,
-          finalMetrics
+          metrics
         );
 
         if (onComplete) {
-          onComplete(finalMetrics);
+          onComplete(metrics);
         }
       } catch (err) {
         console.error('Error saving assessment results:', err);
@@ -173,10 +154,108 @@ const NeckMobility = ({ userId, onComplete }) => {
     }
   };
 
+  const drawGuideOverlay = (ctx) => {
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+
+    // Draw face guide box
+    ctx.strokeStyle = '#2196F3';
+    ctx.lineWidth = 2;
+    const boxSize = Math.min(width, height) * 0.4;
+    const x = (width - boxSize) / 2;
+    const y = (height - boxSize) / 2;
+    ctx.strokeRect(x, y, boxSize, boxSize);
+
+    // Draw position-specific guides
+    ctx.strokeStyle = '#4CAF50';
+    ctx.beginPath();
+    
+    switch (currentPosition) {
+      case 'neutral':
+        // Draw horizontal and vertical center lines
+        ctx.moveTo(width/2 - 50, height/2);
+        ctx.lineTo(width/2 + 50, height/2);
+        ctx.moveTo(width/2, height/2 - 50);
+        ctx.lineTo(width/2, height/2 + 50);
+        break;
+      case 'flexion':
+        // Draw downward arrow
+        ctx.moveTo(width/2, height/2);
+        ctx.lineTo(width/2, height/2 + 100);
+        ctx.lineTo(width/2 - 20, height/2 + 80);
+        ctx.moveTo(width/2, height/2 + 100);
+        ctx.lineTo(width/2 + 20, height/2 + 80);
+        break;
+      case 'extension':
+        // Draw upward arrow
+        ctx.moveTo(width/2, height/2);
+        ctx.lineTo(width/2, height/2 - 100);
+        ctx.lineTo(width/2 - 20, height/2 - 80);
+        ctx.moveTo(width/2, height/2 - 100);
+        ctx.lineTo(width/2 + 20, height/2 - 80);
+        break;
+      case 'rotation':
+        // Draw rotation arrows
+        ctx.arc(width/2, height/2, 50, 0, Math.PI * 2);
+        ctx.moveTo(width/2 + 60, height/2);
+        ctx.lineTo(width/2 + 40, height/2 - 10);
+        ctx.moveTo(width/2 + 60, height/2);
+        ctx.lineTo(width/2 + 40, height/2 + 10);
+        break;
+    }
+    ctx.stroke();
+
+    // Add text instructions
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '20px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(getPositionInstructions(), width/2, height - 30);
+  };
+
+  const getPositionInstructions = () => {
+    switch (currentPosition) {
+      case 'neutral':
+        return 'Align your face within the box and look straight ahead';
+      case 'flexion':
+        return 'Slowly look down following the arrow';
+      case 'extension':
+        return 'Slowly look up following the arrow';
+      case 'rotation':
+        return 'Slowly rotate your head left and right';
+      default:
+        return '';
+    }
+  };
+
+  const renderPositionIndicator = () => {
+    return (
+      <Grid container spacing={2} sx={{ mt: 2 }}>
+        {['neutral', 'flexion', 'extension', 'rotation'].map(position => (
+          <Grid item xs={3} key={position}>
+            <Box 
+              sx={{ 
+                p: 1, 
+                textAlign: 'center',
+                bgcolor: currentPosition === position ? 'primary.main' : 
+                         positionComplete[position] ? 'success.main' : 'grey.300',
+                color: (currentPosition === position || positionComplete[position]) ? 'white' : 'text.primary',
+                borderRadius: 1
+              }}
+            >
+              <Typography variant="body2">
+                {position.charAt(0).toUpperCase() + position.slice(1)}
+              </Typography>
+            </Box>
+          </Grid>
+        ))}
+      </Grid>
+    );
+  };
+
   return (
     <AssessmentLayout
       title="Neck Mobility Assessment"
-      description="This assessment will measure your neck's range of motion and movement patterns. Slowly turn your head left to right, then up and down while keeping your shoulders still."
+      description="This assessment will measure your neck's range of motion. Follow the visual guides for each position."
       isLoading={isLoading}
       isAssessing={isAssessing}
       error={error}
@@ -184,14 +263,106 @@ const NeckMobility = ({ userId, onComplete }) => {
       onStop={stopAssessment}
       metrics={metrics}
     >
-      <Box sx={{ width: '100%', maxWidth: 640, aspectRatio: '4/3', bgcolor: 'black', borderRadius: 2, overflow: 'hidden' }}>
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
-        />
+      <Box sx={{ width: '100%', maxWidth: 800, mx: 'auto' }}>
+        {showGuide && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Typography variant="body1">
+              Position yourself about 2-3 feet from the camera, ensuring your face is clearly visible.
+              Follow the on-screen guides for each movement.
+            </Typography>
+          </Alert>
+        )}
+
+        <Box sx={{ 
+          position: 'relative',
+          aspectRatio: '4/3', 
+          bgcolor: 'black', 
+          borderRadius: 2, 
+          overflow: 'hidden',
+          boxShadow: 3
+        }}>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{ 
+              position: 'absolute',
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              visibility: 'hidden'
+            }}
+          />
+          <canvas
+            ref={canvasRef}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover'
+            }}
+          />
+          {isLoading && (
+            <Box sx={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)'
+            }}>
+              <CircularProgress />
+            </Box>
+          )}
+        </Box>
+        
+        {isAssessing && (
+          <>
+            {renderPositionIndicator()}
+            
+            <Typography variant="body1" sx={{ mt: 2, textAlign: 'center' }}>
+              {getPositionInstructions()}
+            </Typography>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => measurePosition(currentPosition)}
+              >
+                Capture Position
+              </Button>
+            </Box>
+          </>
+        )}
+        
+        {metrics && (
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Assessment Results
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body1">
+                  Flexion: {metrics.flexion_degrees.toFixed(1)}° ({metrics.flexion_percent.toFixed(1)}%)
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body1">
+                  Extension: {metrics.extension_degrees.toFixed(1)}° ({metrics.extension_percent.toFixed(1)}%)
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body1">
+                  Left Rotation: {Math.abs(metrics.left_rotation_degrees).toFixed(1)}° ({metrics.left_rotation_percent.toFixed(1)}%)
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body1">
+                  Right Rotation: {metrics.right_rotation_degrees.toFixed(1)}° ({metrics.right_rotation_percent.toFixed(1)}%)
+                </Typography>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
       </Box>
     </AssessmentLayout>
   );

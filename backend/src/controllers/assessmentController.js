@@ -30,45 +30,87 @@ export const getBaselineData = async (req, res) => {
 
 export const saveAssessment = async (req, res) => {
   try {
-    const { type, data, metrics } = req.body;
+    const { userId, type, data, metrics, status, timestamp } = req.body;
 
+    console.log('Received assessment data:', req.body);
+
+    // Validate required fields
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    if (!type) {
+      return res.status(400).json({
+        success: false,
+        error: 'type is required'
+      });
+    }
+
+    if (!data || typeof data !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'data object is required'
+      });
+    }
+
+    if (!metrics || typeof metrics !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'metrics object is required'
+      });
+    }
+
+    // Create new assessment
     const assessment = new Assessment({
-      user: req.user.userId,
+      userId,
       type,
       data,
       metrics,
-      status: 'COMPLETED'
+      status: status || 'COMPLETED',
+      timestamp: timestamp || new Date()
     });
 
-    await assessment.save();
+    // Save to database
+    const savedAssessment = await assessment.save();
 
     res.status(201).json({
-      message: 'Assessment saved successfully',
-      assessment
+      success: true,
+      data: savedAssessment
     });
   } catch (error) {
-    console.error('Save assessment error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error saving assessment:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
   }
 };
 
 export const getAssessmentHistory = async (req, res) => {
   try {
-    const { type, limit = 10 } = req.query;
-    const query = { user: req.user.userId };
+    const { userId, type, limit = 10 } = req.query;
+
+    const query = { userId };
     if (type) query.type = type;
 
     const assessments = await Assessment.find(query)
-      .sort({ createdAt: -1 })
-      .limit(Number(limit));
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .lean();
 
     res.json({
-      message: 'Assessment history retrieved successfully',
+      success: true,
       data: assessments
     });
   } catch (error) {
-    console.error('Get history error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error getting assessment history:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 };
 

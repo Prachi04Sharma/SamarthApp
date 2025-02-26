@@ -24,7 +24,18 @@ import FingerTapping from '../components/assessments/FingerTapping';
 
 const Assessment = () => {
   const [currentAssessment, setCurrentAssessment] = useState(null);
-  const { currentUser } = useAuth();
+  const { user } = useAuth();
+
+  // Add loading state for user
+  if (!user) {
+    return (
+      <Layout>
+        <Box sx={{ p: 2, textAlign: 'center' }}>
+          <Typography>Please log in to access assessments</Typography>
+        </Box>
+      </Layout>
+    );
+  }
 
   const assessmentTypes = [
     {
@@ -121,8 +132,11 @@ const Assessment = () => {
           </Typography>
         </Box>
         <AssessmentComponent 
-          userId={currentUser?.uid} 
-          onComplete={stopAssessment} 
+          userId={user.id}
+          onComplete={(data) => {
+            console.log('Assessment data:', data);
+            stopAssessment(data);
+          }}
         />
       </Box>
     );

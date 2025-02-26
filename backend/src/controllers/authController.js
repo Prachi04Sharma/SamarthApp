@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import bcrypt from 'bcryptjs';
 
 // Register new user
 export const register = async (req, res) => {
@@ -56,21 +57,29 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid email or password'
       });
     }
 
     // Check password
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid email or password'
       });
     }
 
@@ -81,22 +90,25 @@ export const login = async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    // Send response without password
+    const userResponse = {
+      id: user._id,
+      email: user.email,
+      name: user.name,
+      role: user.role
+    };
+
     res.json({
       success: true,
-      data: {
-        user: {
-          id: user._id,
-          email: user.email,
-          profile: user.profile
-        },
-        token
-      }
+      token,
+      user: userResponse
     });
+
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error logging in'
+      message: 'Internal server error'
     });
   }
 };

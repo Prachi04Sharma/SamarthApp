@@ -21,6 +21,7 @@ import { Line } from 'react-chartjs-2';
 import AssessmentLayout from '../common/AssessmentLayout';
 import { initializeModels, detectFaces, processEyeMovement } from '../../services/mlService';
 import { assessmentService, assessmentTypes } from '../../services/assessmentService';
+import { MLService } from '../../services/mlService';
 
 // MetricCard component for real-time metrics display
 const MetricCard = ({ title, value, icon: Icon, description, color }) => (
@@ -339,23 +340,38 @@ const EyeMovement = ({ userId, onComplete }) => {
     if (!videoRef.current || !isAssessing) return;
 
     try {
-      const detections = await detectFaces(videoRef.current);
+      // Capture current frame
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoRef.current, 0, 0);
       
-      const hasFace = detections.length > 0;
-      setFaceDetected(hasFace);
+      // Convert to blob
+      const blob = await new Promise(resolve => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.95);
+      });
       
-      if (hasFace) {
-        const detection = detections[0];
-        const landmarks = detection.landmarks;
+      // Use Python ML service to analyze eyes
+      const results = await MLService.analyzeEyes(blob);
+      
+      if (results.success) {
+        setFaceDetected(true);
         
-        drawFaceLandmarks(canvasRef.current, landmarks);
-
         const currentTarget = GRID_POSITIONS[currentTargetIndex];
-        const movement = processEyeMovement(landmarks, { x: currentTarget.x, y: currentTarget.y });
         
-        if (movement) {
-          updateMetrics(movement);
-        }
+        // Calculate metrics based on eye positions
+        const accuracy = calculateAccuracy(results.metrics, currentTarget);
+        const speed = results.metrics.left_eye_ear; // Use as proxy for speed
+        const smoothness = 100 - (results.metrics.symmetry * 100); // Use symmetry as proxy for smoothness
+        
+        updateMetrics({
+          accuracy,
+          speed,
+          smoothness
+        });
+      } else {
+        setFaceDetected(false);
       }
 
       if (isAssessing) {
@@ -433,18 +449,19 @@ const EyeMovement = ({ userId, onComplete }) => {
     }
   };
 
-  const calculateAccuracy = (movement, target) => {
+  const calculateAccuracy = (metrics, target) => {
     try {
-      const normalizedX = (movement.averageGaze.x / videoRef.current.videoWidth) * 100;
-      const normalizedY = (movement.averageGaze.y / videoRef.current.videoHeight) * 100;
-
-      const distance = Math.sqrt(
-        Math.pow(normalizedX - target.x, 2) + 
-        Math.pow(normalizedY - target.y, 2)
-      );
-
-      const accuracy = Math.max(0, 100 - (distance * 100 / 141.4));
-      return accuracy;
+      // This is a simplified calculation since we don't have exact gaze coordinates
+      // from the Python service. You may need to adjust this based on your needs.
+      const symmetry = metrics.symmetry;
+      const leftEar = metrics.left_eye_ear;
+      const rightEar = metrics.right_eye_ear;
+      
+      // Higher EAR (Eye Aspect Ratio) means eyes are more open
+      // Lower symmetry means better focus
+      const accuracy = 100 - (symmetry * 100) * (leftEar + rightEar) / 2;
+      
+      return Math.max(0, Math.min(100, accuracy));
     } catch (err) {
       console.warn('Error calculating accuracy:', err);
       return 0;
@@ -486,11 +503,25 @@ const EyeMovement = ({ userId, onComplete }) => {
     }
   };
 
-  // Add this new function
+  // Update the checkFaceDetection function
   const checkFaceDetection = async () => {
     try {
-      const detections = await detectFaces(videoRef.current);
-      const hasFace = detections.length > 0;
+      // Capture current frame
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoRef.current, 0, 0);
+      
+      // Convert to blob
+      const blob = await new Promise(resolve => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.95);
+      });
+      
+      // Use Python ML service to check for face
+      const results = await MLService.analyzeFace(blob);
+      const hasFace = results.success;
+      
       setFaceDetected(hasFace);
       
       if (hasFace) {

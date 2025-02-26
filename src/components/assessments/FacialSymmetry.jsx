@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { Box, Button, Grid } from '@mui/material';
 import AssessmentLayout from '../common/AssessmentLayout';
-import { initializeModels, detectFaces, processFacialMetrics } from '../../services/mlService';
+import { MLService } from '../../services/mlService';
 import { assessmentService, assessmentTypes } from '../../services/assessmentService';
+import PropTypes from 'prop-types';
 
 const FacialSymmetry = ({ userId, onComplete }) => {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isAssessing, setIsAssessing] = useState(false);
   const [error, setError] = useState(null);
   const [metrics, setMetrics] = useState(null);
@@ -17,17 +18,13 @@ const FacialSymmetry = ({ userId, onComplete }) => {
   const assessmentStartTime = useRef(null);
 
   useEffect(() => {
-    const loadModels = async () => {
-      try {
-        await initializeModels();
-        setIsLoading(false);
-      } catch (err) {
-        setError('Failed to load ML models. Please refresh the page and try again.');
-        setIsLoading(false);
-      }
-    };
-    loadModels();
+    if (!userId) {
+      setError('User ID is required for assessment');
+      console.error('FacialSymmetry component: userId prop is required');
+    }
+  }, [userId]);
 
+  useEffect(() => {
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -50,27 +47,37 @@ const FacialSymmetry = ({ userId, onComplete }) => {
       const imageData = canvas.toDataURL('image/jpeg');
       setCapturedImage(imageData);
 
-      // Analyze facial symmetry
-      const detections = await detectFaces(videoRef.current);
-      if (detections.length > 0) {
-        const metrics = processFacialMetrics(detections[0]);
-        setSymmetryData({
-          symmetryScore: metrics.symmetryScore,
-          landmarks: metrics.landmarks,
-          expressions: metrics.expressions,
-          timestamp: Date.now()
-        });
+      // Convert data URL to blob
+      const blob = await fetch(imageData).then(res => res.blob());
 
-        // Update metrics
+      // Use Python ML service to analyze facial symmetry
+      const results = await MLService.analyzeFace(blob);
+      
+      if (results.success) {
+        // Make sure we structure the data correctly
+        const symmetryData = {
+          symmetryScore: results.symmetry_score,
+          metrics: {
+            landmarks: results.landmarks || {}, // Ensure landmarks exist
+            eyeSymmetry: results.metrics?.eye_symmetry || 0,
+            mouthSymmetry: results.metrics?.mouth_symmetry || 0,
+            jawSymmetry: results.metrics?.jaw_symmetry || 0
+          },
+          timestamp: Date.now()
+        };
+
+        setSymmetryData(symmetryData);
+
+        // Update metrics for display
         const currentMetrics = {
-          symmetryScore: metrics.symmetryScore.toFixed(2),
-          expressions: metrics.expressions,
-          landmarks: metrics.landmarks,
+          symmetryScore: symmetryData.symmetryScore.toFixed(2),
+          eyeSymmetry: symmetryData.metrics.eyeSymmetry.toFixed(3),
+          mouthSymmetry: symmetryData.metrics.mouthSymmetry.toFixed(3),
           timestamp: new Date().toISOString()
         };
         setMetrics(currentMetrics);
       } else {
-        setError('No face detected. Please try again.');
+        setError(results.error || 'No face detected. Please try again.');
       }
     } catch (err) {
       console.error('Error analyzing facial symmetry:', err);
@@ -99,22 +106,56 @@ const FacialSymmetry = ({ userId, onComplete }) => {
     }
     setIsAssessing(false);
 
-    if (symmetryData) {
+    if (metrics && symmetryData) {
       try {
+        // Check for auth token
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setError('Please log in to save assessment results');
+          return;
+        }
+
+        // Format metrics for saving - ensure metrics is a top-level object
+        const formattedMetrics = {
+          symmetryScore: parseFloat(metrics.symmetryScore) || 0,
+          eyeSymmetry: parseFloat(metrics.eyeSymmetry) || 0,
+          mouthSymmetry: parseFloat(metrics.mouthSymmetry) || 0,
+          overallSymmetry: parseFloat(metrics.symmetryScore) || 0,
+          eyeAlignment: parseFloat(metrics.eyeSymmetry) || 0,
+          mouthAlignment: parseFloat(metrics.mouthSymmetry) || 0,
+          jawSymmetry: symmetryData.metrics.jawSymmetry || 0,
+          landmarks: symmetryData.metrics.landmarks || {}
+        };
+
+        console.log('Saving assessment with metrics:', formattedMetrics);
+
         // Save assessment results
         await assessmentService.saveAssessment(
           userId,
           assessmentTypes.FACIAL_SYMMETRY,
-          symmetryData
+          formattedMetrics
         );
 
         if (onComplete) {
-          onComplete(symmetryData);
+          onComplete({
+            data: formattedMetrics,
+            timestamp: new Date().toISOString()
+          });
         }
       } catch (err) {
         console.error('Error saving assessment results:', err);
-        setError('Error saving assessment results. Your progress may not be saved.');
+        if (err.response?.status === 401) {
+          setError('Your session has expired. Please log in again.');
+        } else if (err.response?.data?.message) {
+          setError(err.response.data.message);
+        } else if (err.response?.data?.error) {
+          setError(err.response.data.error);
+        } else {
+          setError('Error saving assessment results. Please try again.');
+        }
       }
+    } else {
+      setError('No assessment data available to save.');
     }
   };
 
@@ -125,20 +166,31 @@ const FacialSymmetry = ({ userId, onComplete }) => {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Only proceed if we have landmarks
+    if (!symmetryData.metrics || !symmetryData.metrics.landmarks) {
+      return;
+    }
+
     // Draw facial landmarks
     ctx.strokeStyle = '#00ff00';
     ctx.lineWidth = 2;
 
-    Object.values(symmetryData.landmarks).forEach(points => {
-      ctx.beginPath();
-      points.forEach((point, index) => {
-        if (index === 0) {
-          ctx.moveTo(point.x, point.y);
-        } else {
-          ctx.lineTo(point.x, point.y);
-        }
-      });
-      ctx.stroke();
+    // Safely handle landmarks drawing
+    const landmarks = symmetryData.metrics.landmarks;
+    Object.entries(landmarks).forEach(([key, points]) => {
+      if (Array.isArray(points) && points.length > 0) {
+        ctx.beginPath();
+        points.forEach((point, index) => {
+          if (point && typeof point.x === 'number' && typeof point.y === 'number') {
+            if (index === 0) {
+              ctx.moveTo(point.x, point.y);
+            } else {
+              ctx.lineTo(point.x, point.y);
+            }
+          }
+        });
+        ctx.stroke();
+      }
     });
   };
 
@@ -174,7 +226,7 @@ const FacialSymmetry = ({ userId, onComplete }) => {
   return (
     <AssessmentLayout
       title="Facial Symmetry Assessment"
-      description="This assessment will analyze your facial symmetry and expressions. Look straight at the camera with a neutral expression."
+      description="This assessment will analyze your facial symmetry. Look straight at the camera with a neutral expression."
       isLoading={isLoading}
       isAssessing={isAssessing}
       error={error}
@@ -221,6 +273,11 @@ const FacialSymmetry = ({ userId, onComplete }) => {
       </Grid>
     </AssessmentLayout>
   );
+};
+
+FacialSymmetry.propTypes = {
+  userId: PropTypes.string.isRequired,
+  onComplete: PropTypes.func
 };
 
 export default FacialSymmetry; 

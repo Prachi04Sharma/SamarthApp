@@ -330,6 +330,164 @@ export const analyzeSpeech = () => {
 // Initialize TensorFlow
 initTensorFlow().catch(console.error);
 
+const ML_SERVICE_URL = 'http://localhost:8000';
+
+export const MLService = {
+    /**
+     * Analyze facial symmetry
+     * @param {Blob} imageBlob - Image blob to analyze
+     * @returns {Promise<Object>} Analysis results
+     */
+    analyzeFace: async function(imageBlob) {
+        const formData = new FormData();
+        formData.append('file', imageBlob);
+        
+        try {
+            const response = await fetch(`${ML_SERVICE_URL}/analyze/face`, {
+                method: 'POST',
+                body: formData,
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error('Error analyzing face:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Analyze eye movement
+     * @param {Blob} imageBlob - Image blob to analyze
+     * @returns {Promise<Object>} Analysis results
+     */
+    analyzeEyes: async function(imageBlob) {
+        const formData = new FormData();
+        formData.append('file', imageBlob);
+        
+        try {
+            const response = await fetch(`${ML_SERVICE_URL}/analyze/eyes`, {
+                method: 'POST',
+                body: formData,
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error('Error analyzing eyes:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Analyze hand tremor
+     * @param {Blob} videoBlob - Video blob to analyze
+     * @returns {Promise<Object>} Analysis results
+     */
+    analyzeTremor: async function(videoBlob) {
+        const formData = new FormData();
+        formData.append('file', videoBlob);
+        
+        try {
+            const response = await fetch(`${ML_SERVICE_URL}/analyze/tremor`, {
+                method: 'POST',
+                body: formData,
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error('Error analyzing tremor:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Set neutral position for neck mobility assessment
+     * @param {Blob} imageBlob - Image blob of neutral position
+     * @returns {Promise<Object>} Success status
+     */
+    async setNeckNeutral(imageBlob) {
+        try {
+            const formData = new FormData();
+            formData.append('frame', imageBlob, 'frame.jpg');
+
+            const response = await fetch(`${ML_SERVICE_URL}/analyze/neck/set-neutral`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error setting neutral position:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Measure specific neck position
+     * @param {Blob} imageBlob - Image blob of position
+     * @param {string} position - Position type (flexion, extension, rotation)
+     * @returns {Promise<Object>} Measurement results
+     */
+    async measureNeckPosition(imageBlob, position) {
+        try {
+            const formData = new FormData();
+            formData.append('frame', imageBlob, 'frame.jpg');
+            formData.append('position', position);
+
+            const response = await fetch(`${ML_SERVICE_URL}/analyze/neck/measure`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error measuring position:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Get complete neck mobility assessment results
+     * @returns {Promise<Object>} Assessment results
+     */
+    async getNeckMobilityResults() {
+        try {
+            const response = await fetch(`${ML_SERVICE_URL}/analyze/neck/results`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error getting results:', error);
+            throw error;
+        }
+    }
+};
+
 // Export all functions and constants as a service object as well
 export const mlService = {
   initializeModels,
@@ -341,5 +499,6 @@ export const mlService = {
   MODEL_PATHS,
   SPEECH_METRICS,
   startFingerTapping,
-  stopFingerTapping
+  stopFingerTapping,
+  MLService
 }; 

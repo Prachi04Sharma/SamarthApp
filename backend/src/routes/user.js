@@ -6,12 +6,13 @@ const router = express.Router();
 const userController = new UserController();
 
 // Public routes
-router.post('/register', userController.register);
-router.post('/login', userController.login);
+router.post('/auth/register', userController.register.bind(userController));
+router.post('/auth/login', userController.login.bind(userController));
 
 // Protected routes
-router.get('/profile', auth, userController.getProfile);
-router.put('/profile', auth, userController.updateProfile);
-router.get('/assessments', auth, userController.getAssessments);
+router.get('/auth/me', auth, userController.getCurrentUser.bind(userController));
+router.get('/profile', auth, userController.getProfile.bind(userController));
+router.put('/profile', auth, userController.updateProfile.bind(userController));
+router.get('/assessments', auth, userController.getAssessments.bind(userController));
 
 export default router; 

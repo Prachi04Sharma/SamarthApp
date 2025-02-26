@@ -10,12 +10,12 @@ const api = axios.create({
   }
 });
 
-// Add token to requests
+// Add request interceptor to include auth token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
   },
@@ -24,19 +24,91 @@ api.interceptors.request.use(
   }
 );
 
+// Add response interceptor to handle auth errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear invalid token
+      localStorage.removeItem('token');
+      // Don't redirect if we're already on the login page
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth API
 export const auth = {
   register: async (data) => {
-    const response = await api.post('/auth/register', data);
-    return response.data;
+    try {
+      console.log('Sending registration data:', {
+        ...data,
+        password: '[REDACTED]'
+      });
+      
+      const response = await api.post('/auth/register', {
+        email: data.email,
+        password: data.password,
+        firstName: data.firstName,
+        lastName: data.lastName
+      });
+      
+      console.log('Registration response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Registration error:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
+      throw error.response?.data || error;
+    }
   },
   login: async (data) => {
-    const response = await api.post('/auth/login', data);
-    return response.data;
+    try {
+      const response = await api.post('/auth/login', {
+        email: data.email,
+        password: data.password
+      });
+      console.log('Login API response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Login error:', error.response?.data || error.message);
+      throw error;
+    }
   },
   getCurrentUser: async () => {
-    const response = await api.get('/auth/me');
-    return response.data;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await api.get('/auth/me');
+      
+      if (!response.data || !response.data.user) {
+        throw new Error('Invalid response format from server');
+      }
+
+      return response.data.user;
+    } catch (error) {
+      console.error('Get current user error:', {
+        status: error.response?.status,
+        message: error.message,
+        data: error.response?.data
+      });
+      
+      // Handle specific error cases
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token');
+        throw new Error('Authentication token expired');
+      }
+      
+      throw error;
+    }
   }
 };
 
@@ -44,10 +116,14 @@ export const auth = {
 export const assessment = {
   save: async (data) => {
     try {
-      const response = await api.post('/assessments', data);
-      return response.data;
+      const response = await api.post('/assessments', data, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      return response;
     } catch (error) {
-      console.error('API Error:', error.response?.data || error.message);
+      console.error('API Error:', error.response?.data);
       throw error;
     }
   },
@@ -79,4 +155,17 @@ export const assessment = {
   }
 };
 
+export const assessmentService = {
+  async saveAssessment(assessmentData) {
+    try {
+      const response = await api.post('/assessments', assessmentData);
+      return response.data;
+    } catch (error) {
+      console.error('API Error:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+};
+
+export { api };
 export default api; 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Box, 
@@ -17,21 +17,31 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const successMessage = location.state?.message;
 
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
     try {
-      setLoading(true);
-      await login(email, password);
-      navigate('/home');
-    } catch (error) {
-      setError(error.message || 'Failed to login');
+      await login({
+        email: email.trim(),
+        password: password
+      });
+      
+    } catch (err) {
+      console.error('Login error:', err);
+      setError(err.response?.data?.message || 'Failed to login. Please try again.');
     } finally {
       setLoading(false);
     }
