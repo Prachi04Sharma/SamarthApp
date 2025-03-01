@@ -17,6 +17,7 @@ from .models.tremor_analysis import TremorAnalyzer
 from .models.neck_mobility import NeckMobilityAnalyzer
 from .utils.image_processing import read_image_file
 from .utils.serialization import convert_numpy_types
+from .models.speech_pattern import SpeechPatternAnalyzer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -78,6 +79,7 @@ face_analyzer = FaceAnalyzer()
 eye_tracker = EyeTracker()
 tremor_analyzer = TremorAnalyzer()
 neck_mobility_analyzer = NeckMobilityAnalyzer()
+speech_analyzer = SpeechPatternAnalyzer()
 
 @app.get("/")
 async def root():
@@ -344,3 +346,65 @@ async def get_results():
     except Exception as e:
         print(f"Error getting results: {str(e)}")
         return {"success": False, "error": str(e)}
+
+@app.post("/analyze/speech")
+async def analyze_speech(file: UploadFile = File(...)):
+    """Analyze speech patterns."""
+    temp_path = None
+    try:
+        logger.info("Starting speech pattern analysis")
+        
+        # Save audio file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp:
+            temp_path = tmp.name
+            contents = await file.read()
+            tmp.write(contents)
+            tmp.flush()  # Ensure all data is written
+        
+        # Process audio file
+        analysis_results = speech_analyzer.analyze_speech_pattern(temp_path)
+        
+        if not analysis_results["success"]:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "success": False,
+                    "error": analysis_results.get("error", "Speech analysis failed")
+                }
+            )
+        
+        # Convert numpy types to Python native types for JSON serialization
+        processed_results = convert_numpy_types(analysis_results)
+            
+        return JSONResponse(content=processed_results)
+        
+    except Exception as e:
+        logger.error(f"Error analyzing speech: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(e)
+            }
+        )
+    finally:
+        # Clean up temp file
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except Exception as e:
+                logger.error(f"Error cleaning up temp file: {str(e)}")
+
+@app.options("/analyze/speech")
+async def analyze_speech_options():
+    """Handle CORS preflight requests for speech analysis endpoint."""
+    return JSONResponse(
+        status_code=200,
+        content={"message": "OK"},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:5173",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )

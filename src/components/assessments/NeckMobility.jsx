@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Box, Button, Typography, Grid, CircularProgress, Alert } from '@mui/material';
 import AssessmentLayout from '../common/AssessmentLayout';
 import { MLService } from '../../services/mlService';
-import { assessmentService, assessmentTypes } from '../../services/assessmentService';
+import { specializedAssessments } from '../../services/api';
+import { CheckCircle } from '@mui/icons-material';
 
 const NeckMobility = ({ userId, onComplete }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -18,6 +19,8 @@ const NeckMobility = ({ userId, onComplete }) => {
     extension: false,
     rotation: false
   });
+  const [allPositionsCompleted, setAllPositionsCompleted] = useState(false);
+  const [saveStatus, setSaveStatus] = useState({ saving: false, error: null });
   const assessmentStartTime = useRef(null);
   const canvasRef = useRef(null);
   const [showGuide, setShowGuide] = useState(true);
@@ -29,6 +32,16 @@ const NeckMobility = ({ userId, onComplete }) => {
       }
     };
   }, []);
+
+  // Add effect to check if all positions are completed
+  useEffect(() => {
+    if (positionComplete.neutral && 
+        positionComplete.flexion && 
+        positionComplete.extension && 
+        positionComplete.rotation) {
+      setAllPositionsCompleted(true);
+    }
+  }, [positionComplete]);
 
   useEffect(() => {
     if (isAssessing) {
@@ -98,7 +111,8 @@ const NeckMobility = ({ userId, onComplete }) => {
           if (finalResults.success) {
             setMetrics(finalResults.metrics);
           }
-          stopAssessment();
+          // We'll stop assessment manually with the Complete button now
+          // stopAssessment();
         }
       } else {
         setError(result.error || 'Failed to measure position. Please try again.');
@@ -130,6 +144,8 @@ const NeckMobility = ({ userId, onComplete }) => {
   };
 
   const stopAssessment = async () => {
+    setSaveStatus({ saving: true, error: null });
+    
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
@@ -137,20 +153,38 @@ const NeckMobility = ({ userId, onComplete }) => {
 
     if (metrics) {
       try {
-        // Save assessment results
-        await assessmentService.saveAssessment(
+        // Save assessment results using specialized assessment API
+        const assessmentData = {
           userId,
-          assessmentTypes.NECK_MOBILITY,
-          metrics
-        );
+          type: 'neckMobility',
+          timestamp: new Date().toISOString(),
+          metrics: metrics
+        };
+        
+        const response = await specializedAssessments.neckMobility.save(assessmentData);
+        
+        // Check for success in the response data rather than the response itself
+        if (!response.data || !response.data.success) {
+          throw new Error(response.data?.error || 'Failed to save assessment');
+        }
+
+        console.log('Assessment saved successfully:', response.data);
+        
+        setSaveStatus({ saving: false, error: null });
 
         if (onComplete) {
-          onComplete(metrics);
+          onComplete({
+            ...assessmentData,
+            id: response.data.data?._id || response.data.data?.id
+          });
         }
       } catch (err) {
         console.error('Error saving assessment results:', err);
+        setSaveStatus({ saving: false, error: err.message });
         setError('Error saving assessment results. Your progress may not be saved.');
       }
+    } else {
+      setSaveStatus({ saving: false, error: null });
     }
   };
 
@@ -250,6 +284,24 @@ const NeckMobility = ({ userId, onComplete }) => {
         ))}
       </Grid>
     );
+  };
+
+  const renderSaveStatus = () => {
+    if (saveStatus.saving) {
+      return (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Saving assessment results...
+        </Alert>
+      );
+    }
+    if (saveStatus.error) {
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          Failed to save: {saveStatus.error}
+        </Alert>
+      );
+    }
+    return null;
   };
 
   return (
@@ -361,6 +413,30 @@ const NeckMobility = ({ userId, onComplete }) => {
                 </Typography>
               </Grid>
             </Grid>
+            
+            {renderSaveStatus()}
+            
+            {/* Add Complete Assessment button */}
+            {allPositionsCompleted && (
+              <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  startIcon={<CheckCircle />}
+                  onClick={stopAssessment}
+                  disabled={saveStatus.saving}
+                  sx={{
+                    borderRadius: 2,
+                    px: 4,
+                    py: 1.5,
+                    boxShadow: 4
+                  }}
+                >
+                  {saveStatus.saving ? 'Saving...' : 'Complete Assessment'}
+                </Button>
+              </Box>
+            )}
           </Box>
         )}
       </Box>
@@ -368,4 +444,4 @@ const NeckMobility = ({ userId, onComplete }) => {
   );
 };
 
-export default NeckMobility; 
+export default NeckMobility;

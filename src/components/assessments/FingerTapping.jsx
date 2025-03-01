@@ -15,6 +15,7 @@ import {
   Speed as SpeedIcon,
   Timer as TimerIcon,
   Sync as RhythmIcon,
+  CheckCircle as CheckCircleIcon
 } from '@mui/icons-material';
 import { Line } from 'react-chartjs-2';
 import AssessmentLayout from './AssessmentLayout';
@@ -26,6 +27,7 @@ import {
   PrecisionMap
 } from '../visualizations/FingerTapVisualizations';
 import { FingerTapMetricsAnalyzer } from '../../services/metrics/fingerTapMetrics';
+import { specializedAssessments } from '../../services/api';
 
 const MetricCard = ({ title, value, icon, description }) => (
   <Card sx={{ height: '100%' }}>
@@ -65,12 +67,19 @@ const FingerTapping = ({ userId, onComplete }) => {
   const [baselineData, setBaselineData] = useState(null);
   const metricsAnalyzer = useRef(new FingerTapMetricsAnalyzer());
   const analysisRef = useRef(null);
+  const timerRef = useRef(null);
+  const [timeRemaining, setTimeRemaining] = useState(30);
+  const [saveStatus, setSaveStatus] = useState({ saving: false, error: null, success: false });
+  const [assessmentComplete, setAssessmentComplete] = useState(false);
 
   useEffect(() => {
     return () => {
       // Cleanup on unmount
       if (analysisRef.current?.stop) {
         analysisRef.current.stop();
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
       }
     };
   }, []);
@@ -81,6 +90,9 @@ const FingerTapping = ({ userId, onComplete }) => {
       setError(null);
       setSuccessMessage(null);
       setMetrics(null);
+      setSaveStatus({ saving: false, error: null, success: false });
+      setAssessmentComplete(false);
+      setTimeRemaining(30);
       setRealtimeData({
         tapIntervals: [],
         tapForce: [],
@@ -125,12 +137,17 @@ const FingerTapping = ({ userId, onComplete }) => {
         handleRealtimeUpdate
       );
 
-      // Auto-stop after 20 seconds
-      setTimeout(() => {
-        if (isAssessing) {
-          stopAssessment(stream);
-        }
-      }, 20000);
+      // Start countdown timer for 30 seconds
+      timerRef.current = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            stopAssessment(stream);
+            clearInterval(timerRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
 
     } catch (err) {
       handleError(err);
@@ -139,34 +156,41 @@ const FingerTapping = ({ userId, onComplete }) => {
 
   const stopAssessment = async (stream) => {
     try {
+      // Clear timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      // Stop analysis and camera
       if (analysisRef.current?.stop) {
         analysisRef.current.stop();
       }
-      stream.getTracks().forEach(track => track.stop());
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
 
       // Calculate final metrics
       const finalMetrics = {
         tapsPerSecond: calculateTapsPerSecond(),
         rhythmScore: calculateRhythmScore(),
-        duration: (Date.now() - realtimeData.timestamps[0]) / 1000,
+        duration: (realtimeData.timestamps.length > 0) ? 
+          (realtimeData.timestamps[realtimeData.timestamps.length - 1] - realtimeData.timestamps[0]) / 1000 : 0,
         accuracy: calculateAccuracy()
       };
 
+      // Set metrics but don't save yet
       setMetrics(finalMetrics);
-      await saveAssessmentResults(finalMetrics);
+      setAssessmentComplete(true);
       
-      // Instead of immediately calling onComplete, show a success message
+      // We're not auto-saving anymore, just marking assessment as complete
       setError(null); // Clear any existing errors
       
-      // Optional: Notify parent component about completion without navigation
-      if (onComplete) {
-        // Pass false to indicate we don't want to navigate away
-        onComplete({ ...finalMetrics, shouldNavigate: false });
-      }
     } catch (err) {
       handleError(err);
     } finally {
       setIsAssessing(false);
+      setTimeRemaining(0);
     }
   };
 
@@ -254,44 +278,63 @@ const FingerTapping = ({ userId, onComplete }) => {
     });
   };
 
-  const saveAssessmentResults = async (results) => {
+  const saveAssessmentResults = async () => {
     try {
+      setSaveStatus({ saving: true, error: null, success: false });
+      
       // Validate results
-      if (results.tapsPerSecond === 0 && results.accuracy === 0) {
+      if (!metrics || metrics.tapsPerSecond === 0) {
         throw new Error('No valid taps detected. Please try again.');
       }
 
       const assessmentData = {
-        user: userId,
-        type: 'FINGER_TAPPING',
-        data: {
-          tapIntervals: realtimeData.tapIntervals,
-          tapForce: realtimeData.tapForce,
-          timestamps: realtimeData.timestamps,
+        userId,
+        type: 'fingerTapping',
+        timestamp: new Date().toISOString(),
+        metrics: {
+          frequency: Math.max(0.1, metrics.tapsPerSecond),
+          amplitude: calculateAverageAmplitude(),
+          rhythm: metrics.rhythmScore,
+          overallScore: Math.max(10, (metrics.accuracy + metrics.rhythmScore) / 2),
+          accuracy: Math.max(10, metrics.accuracy),
+          duration: metrics.duration,
+          // Include all the detailed data
           tapData: realtimeData.tapData,
           rhythmData: realtimeData.rhythmData,
           fatigueData: realtimeData.fatigueData,
-          precisionData: realtimeData.precisionData
-        },
-        metrics: {
-          frequency: Math.max(0.1, results.tapsPerSecond),
-          amplitude: calculateAverageAmplitude(),
-          rhythm: results.rhythmScore,
-          overallScore: Math.max(10, (results.accuracy + results.rhythmScore) / 2),
-          accuracy: Math.max(10, results.accuracy),
-          duration: results.duration
+          precisionData: realtimeData.precisionData,
+          rawData: {
+            tapIntervals: realtimeData.tapIntervals,
+            tapForce: realtimeData.tapForce,
+            timestamps: realtimeData.timestamps
+          }
         },
         status: 'COMPLETED'
       };
 
       console.log('Sending assessment data:', assessmentData);
-      await assessmentService.saveAssessment(userId, 'FINGER_TAPPING', assessmentData);
       
-      // Set success message
+      // Use the specialized assessments API
+      const response = await specializedAssessments.fingerTapping.save(assessmentData);
+      
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.error || 'Failed to save finger tapping assessment');
+      }
+      
+      // Set success message and update save status
       setSuccessMessage('Assessment completed successfully! You can review your results below.');
+      setSaveStatus({ saving: false, error: null, success: true });
+      
+      if (onComplete) {
+        onComplete({
+          ...assessmentData,
+          id: response.data.data?._id || response.data.data?.id
+        });
+      }
     } catch (err) {
       console.error('Failed to save assessment results:', err);
       setError(err.message);
+      setSaveStatus({ saving: false, error: err.message, success: false });
     }
   };
 
@@ -408,6 +451,31 @@ const FingerTapping = ({ userId, onComplete }) => {
     );
   };
 
+  const renderSaveStatus = () => {
+    if (saveStatus.saving) {
+      return (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Saving assessment results...
+        </Alert>
+      );
+    }
+    if (saveStatus.error) {
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          Failed to save: {saveStatus.error}
+        </Alert>
+      );
+    }
+    if (saveStatus.success) {
+      return (
+        <Alert severity="success" sx={{ mt: 2 }}>
+          Assessment saved successfully!
+        </Alert>
+      );
+    }
+    return null;
+  };
+
   return (
     <AssessmentLayout
       title="Finger Tapping Test"
@@ -444,7 +512,7 @@ const FingerTapping = ({ userId, onComplete }) => {
                   height: '100%'
                 }}
               />
-              {!isAssessing && (
+              {!isAssessing && !assessmentComplete && (
                 <Box sx={{ p: 4, textAlign: 'center' }}>
                   <TapIcon sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
                   <Typography variant="h6">
@@ -452,25 +520,47 @@ const FingerTapping = ({ userId, onComplete }) => {
                   </Typography>
                 </Box>
               )}
+              {isAssessing && (
+                <Box sx={{ position: 'absolute', bottom: 10, left: 10, right: 10 }}>
+                  <Typography variant="body1" sx={{ color: 'white', mb: 1, textShadow: '1px 1px 2px black' }}>
+                    Time remaining: {timeRemaining} seconds
+                  </Typography>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={(30 - timeRemaining) / 30 * 100} 
+                    sx={{ height: 10, borderRadius: 5 }}
+                  />
+                </Box>
+              )}
             </Paper>
           </Grid>
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: 2 }}>
-              {!isAssessing && metrics ? (
+              {assessmentComplete ? (
                 <>
-                  <Button
-                    fullWidth
-                    variant="contained"
-                    color="primary"
-                    onClick={startAssessment}
-                    startIcon={<TapIcon />}
-                  >
-                    Start New Assessment
-                  </Button>
-                  {successMessage && (
-                    <Alert severity="success" sx={{ mt: 2 }}>
-                      {successMessage}
-                    </Alert>
+                  {!saveStatus.success ? (
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      color="primary"
+                      onClick={saveAssessmentResults}
+                      startIcon={<CheckCircleIcon />}
+                      disabled={saveStatus.saving}
+                      sx={{ mb: 2 }}
+                    >
+                      {saveStatus.saving ? 'Saving...' : 'Complete Assessment'}
+                    </Button>
+                  ) : (
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      color="primary"
+                      onClick={startAssessment}
+                      startIcon={<TapIcon />}
+                      sx={{ mb: 2 }}
+                    >
+                      Start New Assessment
+                    </Button>
                   )}
                 </>
               ) : (
@@ -485,9 +575,18 @@ const FingerTapping = ({ userId, onComplete }) => {
                   {isAssessing ? 'Stop Recording' : 'Start Assessment'}
                 </Button>
               )}
+              
+              {renderSaveStatus()}
+              
               {error && (
                 <Alert severity="error" sx={{ mt: 2 }}>
                   {error}
+                </Alert>
+              )}
+              
+              {successMessage && (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  {successMessage}
                 </Alert>
               )}
             </Paper>
@@ -501,4 +600,4 @@ const FingerTapping = ({ userId, onComplete }) => {
   );
 };
 
-export default FingerTapping; 
+export default FingerTapping;

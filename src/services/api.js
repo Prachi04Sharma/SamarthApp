@@ -167,18 +167,38 @@ export const assessmentService = {
 
 export const specializedAssessments = {
   eyeMovement: {
-    async save(data) {
+    save: async (data) => {
       try {
-        // Fix: Change endpoint to match backend route
         const response = await api.post('/specialized-assessments/eye-movement', data);
-        return response.data;
+        return response; // Return the full Axios response object
       } catch (error) {
-        console.error('API Error:', error.response?.data || error.message);
+        console.error('API Error in eyeMovement.save:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message
+        });
         throw error;
       }
     },
-    getHistory: (userId) => api.get(`/specialized-assessments/eye-movement/history/${userId}`),
+    getHistory: (userId, limit) => api.get('/specialized-assessments/eye-movement/history', { params: { userId, limit } }),
     getBaseline: (userId) => api.get(`/specialized-assessments/eye-movement/baseline/${userId}`)
+  },
+  neckMobility: {
+    save: async (data) => {
+      try {
+        const response = await api.post('/specialized-assessments/neck-mobility', data);
+        return response; // Return the full response object
+      } catch (error) {
+        console.error('API Error in neckMobility.save:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message
+        });
+        throw error;
+      }
+    },
+    getHistory: (userId, limit) => api.get('/specialized-assessments/neck-mobility/history', { params: { userId, limit } }),
+    getBaseline: (userId) => api.get(`/specialized-assessments/neck-mobility/baseline/${userId}`)
   },
   facialSymmetry: {
     save: (data) => api.post('/specialized-assessments/facial-symmetry', data),
@@ -191,6 +211,92 @@ export const specializedAssessments = {
         }
         throw error;
       })
+  },
+  // Add new tremor assessment API
+  tremor: {
+    save: async (data) => {
+      try {
+        const response = await api.post('/specialized-assessments/tremor', data);
+        return response; // Return the full Axios response object
+      } catch (error) {
+        console.error('API Error in tremor.save:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message
+        });
+        throw error;
+      }
+    },
+    getHistory: (userId, limit) => api.get('/specialized-assessments/tremor/history', { params: { userId, limit } }),
+    getBaseline: (userId) => api.get(`/specialized-assessments/tremor/baseline/${userId}`)
+  },
+  responseTime: {
+    save: async (data) => {
+      try {
+        const response = await api.post('/specialized-assessments/response-time', data);
+        return response; // Return the full Axios response object
+      } catch (error) {
+        console.error('API Error in responseTime.save:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message
+        });
+        throw error;
+      }
+    },
+    getHistory: (userId, limit) => api.get('/specialized-assessments/response-time/history', { params: { userId, limit } }),
+    getBaseline: (userId) => api.get(`/specialized-assessments/response-time/baseline/${userId}`)
+  },
+  gaitAnalysis: {
+    save: async (data) => {
+      try {
+        const response = await api.post('/specialized-assessments/gait-analysis', data);
+        return response; // Return the full Axios response object
+      } catch (error) {
+        console.error('API Error in gaitAnalysis.save:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message
+        });
+        throw error;
+      }
+    },
+    getHistory: (userId, limit) => api.get('/specialized-assessments/gait-analysis/history', { params: { userId, limit } }),
+    getBaseline: (userId) => api.get(`/specialized-assessments/gait-analysis/baseline/${userId}`)
+  },
+  fingerTapping: {
+    save: async (data) => {
+      try {
+        const response = await api.post('/specialized-assessments/finger-tapping', data);
+        return response; // Return the full Axios response object
+      } catch (error) {
+        console.error('API Error in fingerTapping.save:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message
+        });
+        throw error;
+      }
+    },
+    getHistory: (userId, limit) => api.get('/specialized-assessments/finger-tapping/history', { params: { userId, limit } }),
+    getBaseline: (userId) => api.get(`/specialized-assessments/finger-tapping/baseline/${userId}`)
+  },
+  speechPattern: {
+    save: async (data) => {
+      try {
+        const response = await api.post('/specialized-assessments/speech-pattern', data);
+        return response; // Return the full Axios response object
+      } catch (error) {
+        console.error('API Error in speechPattern.save:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message
+        });
+        throw error;
+      }
+    },
+    getHistory: (userId, limit) => api.get('/specialized-assessments/speech-pattern/history', { params: { userId, limit } }),
+    getBaseline: (userId) => api.get(`/specialized-assessments/speech-pattern/baseline/${userId}`)
   }
 };
 

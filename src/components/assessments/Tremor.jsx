@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, Button, Typography, Grid, LinearProgress, Card, CardContent, CircularProgress, Fade, Paper, Chip, Stack } from '@mui/material';
+import { Box, Button, Typography, Grid, LinearProgress, Card, CardContent, CircularProgress, Fade, Paper, Chip, Stack, Alert, AlertTitle } from '@mui/material';
 import { Timeline as TimelineIcon, Waves as WavesIcon, Speed as SpeedIcon, Warning as WarningIcon, CheckCircle } from '@mui/icons-material';
 import AssessmentLayout from '../common/AssessmentLayout';
-import ErrorBoundary from '../common/ErrorBoundary';  // Create this component if not exists
+import ErrorBoundary from '../common/ErrorBoundary';
 import { MLService } from '../../services/mlService';
-import { assessmentService, assessmentTypes } from '../../services/assessmentService';
 import AssessmentError from './AssessmentError';
+import { specializedAssessments } from '../../services/api';
 
 const Tremor = ({ userId, onComplete }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -13,6 +13,7 @@ const Tremor = ({ userId, onComplete }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState(null);
   const [metrics, setMetrics] = useState(null);
+  const [saveStatus, setSaveStatus] = useState({ saving: false, error: null, success: false });
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -123,11 +124,7 @@ const Tremor = ({ userId, onComplete }) => {
           throw new Error('No metrics received from analysis');
         }
         setMetrics(results.metrics);
-        await assessmentService.saveAssessment(
-          userId,
-          assessmentTypes.TREMOR,
-          results.metrics
-        );
+        // Remove automatic saving - we'll wait for the user to click Complete Assessment
       } else {
         throw new Error(results.error || 'Failed to analyze tremor');
       }
@@ -138,10 +135,69 @@ const Tremor = ({ userId, onComplete }) => {
     }
   };
 
-  const handleAssessmentComplete = () => {
-    if (onComplete && metrics) {
-      onComplete(metrics);
+  // Update the save function to handle statuses
+  const handleSaveAssessment = async () => {
+    if (!metrics) return;
+    
+    try {
+      setSaveStatus({ saving: true, error: null, success: false });
+      
+      const assessmentData = {
+        userId,
+        type: 'tremor',
+        timestamp: new Date().toISOString(),
+        metrics: metrics
+      };
+      
+      const response = await specializedAssessments.tremor.save(assessmentData);
+      
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.error || 'Failed to save tremor assessment');
+      }
+      
+      console.log('Tremor assessment saved successfully:', response.data);
+      setSaveStatus({ saving: false, error: null, success: true });
+      
+      // Call onComplete with the assessment data
+      if (onComplete) {
+        onComplete({
+          ...assessmentData,
+          id: response.data.data?._id || response.data.data?.id
+        });
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error saving tremor assessment:', error);
+      setSaveStatus({ saving: false, error: error.message, success: false });
+      return null;
     }
+  };
+
+  // Add a function to render the save status
+  const renderSaveStatus = () => {
+    if (saveStatus.saving) {
+      return (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Saving assessment results...
+        </Alert>
+      );
+    }
+    if (saveStatus.error) {
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          Failed to save: {saveStatus.error}
+        </Alert>
+      );
+    }
+    if (saveStatus.success) {
+      return (
+        <Alert severity="success" sx={{ mt: 2 }}>
+          Assessment saved successfully!
+        </Alert>
+      );
+    }
+    return null;
   };
 
   const stopAssessment = () => {
@@ -309,19 +365,26 @@ const Tremor = ({ userId, onComplete }) => {
                     </Alert>
                   )}
 
+                  {/* Add save status display */}
+                  {renderSaveStatus()}
+
+                  {/* Update button to call handleSaveAssessment directly */}
                   <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
                     <Button
                       variant="contained"
                       color="primary"
-                      onClick={handleAssessmentComplete}
+                      onClick={handleSaveAssessment}
                       startIcon={<CheckCircle />}
+                      disabled={saveStatus.saving || saveStatus.success}
                       sx={{
                         minWidth: 200,
                         py: 1.5,
                         borderRadius: 2
                       }}
                     >
-                      Complete Assessment
+                      {saveStatus.saving ? 'Saving...' : 
+                       saveStatus.success ? 'Assessment Completed' : 
+                       'Complete Assessment'}
                     </Button>
                   </Box>
                 </Paper>

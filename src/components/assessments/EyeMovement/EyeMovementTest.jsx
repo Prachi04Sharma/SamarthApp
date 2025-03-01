@@ -380,19 +380,21 @@ const EyeMovement = ({ userId, onComplete }) => {
 
       const response = await specializedAssessments.eyeMovement.save(assessmentData);
       
-      if (!response || !response.success) {
+      // Fix: Check for success from the response data, not the response itself
+      // The API returns a 201 status with a success property in the data
+      if (!response.data || response.data.success === false) {
         console.error('Save response error:', response);
-        throw new Error(response?.error || 'Failed to save assessment');
+        throw new Error(response.data?.error || 'Failed to save assessment');
       }
 
-      console.log('Assessment saved successfully:', response);
-
+      console.log('Assessment saved successfully:', response.data);
+      
       setSaveStatus({ saving: false, error: null });
       
       if (onComplete) {
         onComplete({
           ...assessmentData,
-          id: response.data?._id || response.data?.id
+          id: response.data.data?._id || response.data.data?.id
         });
       }
 

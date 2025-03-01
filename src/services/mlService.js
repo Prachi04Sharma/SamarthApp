@@ -503,6 +503,98 @@ export const MLService = {
             console.error('Error getting results:', error);
             throw error;
         }
+    },
+
+    /**
+     * Analyze speech pattern
+     * @param {Blob} audioBlob - Audio blob to analyze
+     * @returns {Promise<Object>} Analysis results
+     */
+    analyzeSpeechPattern: async function(audioBlob) {
+        console.log('Starting speech pattern analysis, blob size:', audioBlob.size);
+        const formData = new FormData();
+        
+        // Ensure correct file format and name
+        const file = new Blob([audioBlob], { type: 'audio/wav' });
+        formData.append('file', file, 'speech.wav');
+      
+        try {
+          const response = await fetch(`${this.BASE_URL}/analyze/speech`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+              'Accept': 'application/json'
+            },
+            mode: 'cors',
+            credentials: 'include'
+          });
+      
+          if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage;
+            try {
+              const errorJson = JSON.parse(errorText);
+              errorMessage = errorJson.error || `HTTP error! status: ${response.status}`;
+            } catch {
+              errorMessage = errorText || `HTTP error! status: ${response.status}`;
+            }
+            throw new Error(errorMessage);
+          }
+      
+          const data = await response.json();
+          return {
+            success: data.success,
+            metrics: {
+              clarity: data.metrics?.clarity || 0,
+              speech_rate: data.metrics?.speechRate?.wordsPerMinute || 0,
+              volume_control: data.metrics?.volumeControl?.volumeVariation || 0,
+              pitch_stability: data.metrics?.pitchStability || 0,
+              articulation: {
+                precision: data.metrics?.articulation?.precision || 0,
+                vowel_formation: data.metrics?.articulation?.vowelFormation || 0,
+                consonant_precision: data.metrics?.articulation?.consonantPrecision || 0,
+                slurred_speech: data.metrics?.articulation?.slurredSpeech || 0
+              },
+              emotion: {
+                confidence: data.metrics?.emotion?.confidence || 0,
+                hesitation: data.metrics?.emotion?.hesitation || 0,
+                stress: data.metrics?.emotion?.stress || 0
+              },
+              fluency: {
+                pause_rate: data.metrics?.fluency?.pauseRate || 0,
+                words_per_minute: data.metrics?.fluency?.wordsPerMinute || 0,
+                fluency_score: data.metrics?.fluency?.fluencyScore || 0
+              },
+              neurological_indicators: data.metrics?.neurologicalIndicators || {},
+              disorder_risks: data.metrics?.disorderRiskScores || {},
+              time_series: data.metrics?.timeSeries || {}
+            }
+          };
+        } catch (error) {
+          console.error('Speech analysis error:', error);
+          throw error;
+        }
+      }
+};
+
+// Add new speech constants
+export const SPEECH_PATTERN_METRICS = {
+    PITCH_RANGE: {
+        MIN: 50,  // Hz
+        MAX: 500  // Hz
+    },
+    VOLUME_RANGE: {
+        MIN: -90, // dB
+        MAX: -10  // dB
+    },
+    FLUENCY: {
+        MIN_PAUSE: 0.2,    // seconds
+        MAX_PAUSE: 2.0,    // seconds
+        TARGET_RATE: 150   // words per minute
+    },
+    ARTICULATION: {
+        CLARITY_THRESHOLD: 0.75,
+        PRECISION_THRESHOLD: 0.8
     }
 };
 
@@ -518,5 +610,86 @@ export const mlService = {
   SPEECH_METRICS,
   startFingerTapping,
   stopFingerTapping,
-  MLService
+  MLService,
+  SPEECH_PATTERN_METRICS,
+  analyzeSpeechPattern: MLService.analyzeSpeechPattern
+};
+
+// Add speech analysis method
+MLService.analyzeSpeechPattern = async function(audioBlob) {
+  try {
+    const formData = new FormData();
+    formData.append('file', audioBlob);
+
+    const response = await fetch(`${this.BASE_URL}/analyze/speech`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Speech analysis failed');
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Speech analysis error:', error);
+    throw error;
+  }
+};
+
+// Update the analyzeSpeechPattern method
+MLService.analyzeSpeechPattern = async function(audioBlob) {
+    console.log('Starting speech pattern analysis, blob size:', audioBlob.size);
+    const formData = new FormData();
+    
+    const file = new Blob([audioBlob], { type: 'audio/wav' });
+    formData.append('file', file, 'speech.wav');
+  
+    try {
+      const response = await fetch(`${this.BASE_URL}/analyze/speech`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json'
+        },
+        mode: 'cors',
+        credentials: 'include'
+      });
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = await this._parseErrorResponse(errorText, response.status);
+        throw new Error(errorMessage);
+      }
+  
+      const data = await response.json();
+      return {
+        success: data.success,
+        metrics: {
+          clarity: data.metrics?.clarity || 0,
+          speech_rate: data.metrics?.speech_rate || 0,
+          volume_control: data.metrics?.volume_control || 0,
+          pitch_stability: data.metrics?.pitch_stability || 0,
+          articulation: {
+            precision: data.metrics?.articulation?.precision || 0,
+            vowel_formation: data.metrics?.articulation?.vowel_formation || 0,
+            consonant_precision: data.metrics?.articulation?.consonant_precision || 0,
+            slurred_speech: data.metrics?.articulation?.slurred_speech || 0
+          },
+          emotion: {
+            confidence: data.metrics?.emotion?.confidence || 0,
+            hesitation: data.metrics?.emotion?.hesitation || 0,
+            stress: data.metrics?.emotion?.stress || 0
+          }
+        }
+      };
+    } catch (error) {
+      console.error('Speech analysis error:', error);
+      throw error;
+    }
 };
