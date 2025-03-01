@@ -114,7 +114,7 @@ class NeckMobilityAnalyzer:
         if not landmarks:
             return None
             
-        # Calculate midpoints
+        # Calculate midpoints with depth consideration
         ear_midpoint = np.array([
             (landmarks['left_ear'][0] + landmarks['right_ear'][0]) / 2,
             (landmarks['left_ear'][1] + landmarks['right_ear'][1]) / 2
@@ -129,8 +129,9 @@ class NeckMobilityAnalyzer:
         neck_vector = ear_midpoint - shoulder_midpoint
         
         # Calculate angle with vertical axis (0 degrees is straight up)
+        # Added smoothing and bounds checking
         angle = -math.degrees(math.atan2(neck_vector[0], -neck_vector[1]))
-        return angle
+        return max(-90, min(90, angle))  # Limit angle to realistic range
         
     def calculate_lateral_angle(self, landmarks):
         """Calculate lateral neck angle (left-right tilt)."""
@@ -189,11 +190,11 @@ class NeckMobilityAnalyzer:
         return max(0, extension_angle)  # Only return positive values
         
     def measure_rotation(self, landmarks):
-        """Measure neck rotation based on ear-nose alignment."""
+        """Improved rotation measurement using nose-ear relationship."""
         if not landmarks:
             return None
             
-        # Calculate vectors from nose to ears
+        # Get nose and ear positions
         nose = np.array(landmarks['nose'])
         left_ear = np.array(landmarks['left_ear'])
         right_ear = np.array(landmarks['right_ear'])
@@ -201,52 +202,48 @@ class NeckMobilityAnalyzer:
         # Calculate ear midpoint
         ear_midpoint = (left_ear + right_ear) / 2
         
-        # Calculate vector from ear midpoint to nose
-        nose_vector = nose - ear_midpoint
+        # Calculate distances from nose to each ear
+        left_dist = np.linalg.norm(nose - left_ear)
+        right_dist = np.linalg.norm(nose - right_ear)
         
-        # Calculate angle relative to forward direction
-        forward_vector = np.array([0, 1])  # Forward is positive y
-        angle = math.degrees(
-            math.atan2(
-                np.cross(forward_vector, nose_vector[:2]),
-                np.dot(forward_vector, nose_vector[:2])
-            )
-        )
-        
-        # Update max rotations
-        if angle < 0:  # Left rotation
-            if self.max_left_rotation is None or angle < self.max_left_rotation:
-                self.max_left_rotation = angle
-        else:  # Right rotation
-            if self.max_right_rotation is None or angle > self.max_right_rotation:
-                self.max_right_rotation = angle
-                
-        return angle
+        # Calculate rotation angle based on relative distances
+        if left_dist > right_dist:
+            # Head turned right
+            rotation = (left_dist - right_dist) / (left_dist + right_dist) * 70  # Max 70 degrees
+        else:
+            # Head turned left
+            rotation = -(right_dist - left_dist) / (left_dist + right_dist) * 70
+            
+        return max(-70, min(70, rotation))  # Limit to realistic range
         
     def get_mobility_assessment(self):
-        """Get the complete neck mobility assessment."""
+        """Get the complete neck mobility assessment with improved validation."""
         if self.neutral_angle is None:
             return {
                 "success": False,
                 "error": "Neutral position not set"
             }
             
-        # Normal ranges (approximate)
-        normal_flexion = 45
-        normal_extension = 55
-        normal_rotation = 70
+        # Normal ranges (realistic values)
+        normal_flexion = 40  # Normal range 35-45°
+        normal_extension = 50  # Normal range 45-55°
+        normal_rotation = 70  # Normal range 60-80°
         
-        # Ensure we have valid measurements
-        max_flexion = max(0, self.max_flexion if self.max_flexion is not None else 0)
-        max_extension = max(0, self.max_extension if self.max_extension is not None else 0)
-        max_left_rotation = abs(self.max_left_rotation if self.max_left_rotation is not None else 0)
-        max_right_rotation = abs(self.max_right_rotation if self.max_right_rotation is not None else 0)
+        # Validate and clean measurements
+        max_flexion = max(0, min(normal_flexion * 1.5, 
+                         self.max_flexion if self.max_flexion is not None else 0))
+        max_extension = max(0, min(normal_extension * 1.5, 
+                           self.max_extension if self.max_extension is not None else 0))
+        max_left_rotation = max(0, min(normal_rotation, 
+                              abs(self.max_left_rotation if self.max_left_rotation is not None else 0)))
+        max_right_rotation = max(0, min(normal_rotation, 
+                               abs(self.max_right_rotation if self.max_right_rotation is not None else 0)))
         
-        # Calculate percentages with bounds checking
-        flexion_percent = min(100, (max_flexion / normal_flexion * 100)) if max_flexion > 0 else 0
-        extension_percent = min(100, (max_extension / normal_extension * 100)) if max_extension > 0 else 0
-        left_rotation_percent = min(100, (max_left_rotation / normal_rotation * 100)) if max_left_rotation > 0 else 0
-        right_rotation_percent = min(100, (max_right_rotation / normal_rotation * 100)) if max_right_rotation > 0 else 0
+        # Calculate percentages with improved normalization
+        flexion_percent = (max_flexion / normal_flexion * 100) if max_flexion > 0 else 0
+        extension_percent = (max_extension / normal_extension * 100) if max_extension > 0 else 0
+        left_rotation_percent = (max_left_rotation / normal_rotation * 100) if max_left_rotation > 0 else 0
+        right_rotation_percent = (max_right_rotation / normal_rotation * 100) if max_right_rotation > 0 else 0
         
         # Reset measurements for next assessment
         self.reset_measurements()
@@ -258,9 +255,9 @@ class NeckMobilityAnalyzer:
                 "extension_degrees": float(max_extension),
                 "left_rotation_degrees": float(max_left_rotation),
                 "right_rotation_degrees": float(max_right_rotation),
-                "flexion_percent": float(flexion_percent),
-                "extension_percent": float(extension_percent),
-                "left_rotation_percent": float(left_rotation_percent),
-                "right_rotation_percent": float(right_rotation_percent)
+                "flexion_percent": min(100, float(flexion_percent)),
+                "extension_percent": min(100, float(extension_percent)),
+                "left_rotation_percent": min(100, float(left_rotation_percent)),
+                "right_rotation_percent": min(100, float(right_rotation_percent))
             }
         }

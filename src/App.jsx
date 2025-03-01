@@ -19,7 +19,7 @@ import NotFound from './pages/NotFound';
 import Dashboard from './components/Dashboard';
 
 // Assessment Components
-import EyeMovement from './components/assessments/EyeMovement';
+import EyeMovement from './components/assessments/EyeMovement/EyeMovementTest';
 import NeckMobility from './components/assessments/NeckMobility';
 import FacialSymmetry from './components/assessments/FacialSymmetry';
 import Tremor from './components/assessments/Tremor';

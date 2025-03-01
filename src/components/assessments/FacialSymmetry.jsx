@@ -4,6 +4,8 @@ import AssessmentLayout from '../common/AssessmentLayout';
 import { MLService } from '../../services/mlService';
 import { assessmentService, assessmentTypes } from '../../services/assessmentService';
 import PropTypes from 'prop-types';
+import { specializedAssessments } from '../../services/api';
+import { saveFacialAssessment } from '../../services/assessments/facialService';
 
 const FacialSymmetry = ({ userId, onComplete }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -108,56 +110,58 @@ const FacialSymmetry = ({ userId, onComplete }) => {
 
     if (metrics && symmetryData) {
       try {
-        // Check for auth token
-        const token = localStorage.getItem('token');
-        if (!token) {
-          setError('Please log in to save assessment results');
-          return;
-        }
-
-        // Format metrics for saving - ensure metrics is a top-level object
-        const formattedMetrics = {
-          symmetryScore: parseFloat(metrics.symmetryScore) || 0,
-          eyeSymmetry: parseFloat(metrics.eyeSymmetry) || 0,
-          mouthSymmetry: parseFloat(metrics.mouthSymmetry) || 0,
-          overallSymmetry: parseFloat(metrics.symmetryScore) || 0,
-          eyeAlignment: parseFloat(metrics.eyeSymmetry) || 0,
-          mouthAlignment: parseFloat(metrics.mouthSymmetry) || 0,
-          jawSymmetry: symmetryData.metrics.jawSymmetry || 0,
-          landmarks: symmetryData.metrics.landmarks || {}
+        const assessmentData = {
+          userId,
+          metrics: {
+            overallSymmetry: parseFloat(metrics.symmetryScore),
+            eyeSymmetry: {
+              left: symmetryData.metrics.leftEye || {},
+              right: symmetryData.metrics.rightEye || {},
+              alignmentScore: parseFloat(metrics.eyeSymmetry)
+            },
+            mouthSymmetry: {
+              centerDeviation: symmetryData.metrics.mouthCenter || 0,
+              cornerAlignment: symmetryData.metrics.mouthCorners || 0,
+              symmetryScore: parseFloat(metrics.mouthSymmetry)
+            },
+            jawSymmetry: {
+              leftAngle: symmetryData.metrics.jawLeft || 0,
+              rightAngle: symmetryData.metrics.jawRight || 0,
+              symmetryScore: symmetryData.metrics.jawSymmetry || 0
+            },
+            landmarks: symmetryData.metrics.landmarks || {}
+          }
         };
 
-        console.log('Saving assessment with metrics:', formattedMetrics);
-
-        // Save assessment results
-        await assessmentService.saveAssessment(
-          userId,
-          assessmentTypes.FACIAL_SYMMETRY,
-          formattedMetrics
-        );
+        const result = await saveFacialAssessment(assessmentData);
 
         if (onComplete) {
-          onComplete({
-            data: formattedMetrics,
-            timestamp: new Date().toISOString()
-          });
+          onComplete(result);
         }
-      } catch (err) {
-        console.error('Error saving assessment results:', err);
-        if (err.response?.status === 401) {
-          setError('Your session has expired. Please log in again.');
-        } else if (err.response?.data?.message) {
-          setError(err.response.data.message);
-        } else if (err.response?.data?.error) {
-          setError(err.response.data.error);
-        } else {
-          setError('Error saving assessment results. Please try again.');
-        }
+      } catch (error) {
+        console.error('Error saving facial symmetry assessment:', error);
+        setError(error.message || 'Failed to save assessment results');
       }
-    } else {
-      setError('No assessment data available to save.');
     }
   };
+
+  useEffect(() => {
+    const fetchBaseline = async () => {
+      try {
+        const response = await specializedAssessments.facialSymmetry.getBaseline(userId);
+        if (response.data.data) {
+          // Use baseline data for comparison
+          console.log('Baseline data:', response.data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch baseline:', error);
+      }
+    };
+
+    if (userId) {
+      fetchBaseline();
+    }
+  }, [userId]);
 
   const renderSymmetryOverlay = () => {
     if (!symmetryData || !canvasRef.current) return;
@@ -280,4 +284,4 @@ FacialSymmetry.propTypes = {
   onComplete: PropTypes.func
 };
 
-export default FacialSymmetry; 
+export default FacialSymmetry;

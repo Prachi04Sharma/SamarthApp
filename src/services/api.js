@@ -89,7 +89,7 @@ export const auth = {
 
       const response = await api.get('/auth/me');
       
-      if (!response.data || !response.data.user) {
+      if (!response.data || !response.data.success || !response.data.user) {
         throw new Error('Invalid response format from server');
       }
 
@@ -101,10 +101,8 @@ export const auth = {
         data: error.response?.data
       });
       
-      // Handle specific error cases
       if (error.response?.status === 401) {
         localStorage.removeItem('token');
-        throw new Error('Authentication token expired');
       }
       
       throw error;
@@ -167,5 +165,34 @@ export const assessmentService = {
   }
 };
 
+export const specializedAssessments = {
+  eyeMovement: {
+    async save(data) {
+      try {
+        // Fix: Change endpoint to match backend route
+        const response = await api.post('/specialized-assessments/eye-movement', data);
+        return response.data;
+      } catch (error) {
+        console.error('API Error:', error.response?.data || error.message);
+        throw error;
+      }
+    },
+    getHistory: (userId) => api.get(`/specialized-assessments/eye-movement/history/${userId}`),
+    getBaseline: (userId) => api.get(`/specialized-assessments/eye-movement/baseline/${userId}`)
+  },
+  facialSymmetry: {
+    save: (data) => api.post('/specialized-assessments/facial-symmetry', data),
+    getHistory: (userId) => api.get(`/specialized-assessments/facial-symmetry/history/${userId}`),
+    getBaseline: (userId) => api.get(`/specialized-assessments/facial-symmetry/baseline/${userId}`)
+      .catch(error => {
+        if (error.response?.status === 404) {
+          // Return empty data if no baseline exists
+          return { data: { success: true, data: null } };
+        }
+        throw error;
+      })
+  }
+};
+
 export { api };
-export default api; 
+export default api;

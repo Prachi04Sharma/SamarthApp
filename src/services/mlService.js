@@ -333,6 +333,46 @@ initTensorFlow().catch(console.error);
 const ML_SERVICE_URL = 'http://localhost:8000';
 
 export const MLService = {
+  BASE_URL: 'http://localhost:8000',
+
+  analyzeEyes: async function(videoBlob, phase) {
+    const formData = new FormData();
+    formData.append('file', new Blob([videoBlob], { type: 'video/webm' }));
+    formData.append('phase', phase);
+
+    try {
+      const response = await fetch(`${this.BASE_URL}/analyze/eyes`, {
+        method: 'POST',
+        body: formData,
+        mode: 'cors',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Origin': 'http://localhost:5173'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.detail || `HTTP error! status: ${response.status}`;
+        } catch {
+          errorMessage = errorText || `HTTP error! status: ${response.status}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      return data;
+
+    } catch (error) {
+      console.error('Error analyzing eyes:', error);
+      throw error;
+    }
+  },
+
     /**
      * Analyze facial symmetry
      * @param {Blob} imageBlob - Image blob to analyze
@@ -360,53 +400,31 @@ export const MLService = {
     },
 
     /**
-     * Analyze eye movement
-     * @param {Blob} imageBlob - Image blob to analyze
-     * @returns {Promise<Object>} Analysis results
-     */
-    analyzeEyes: async function(imageBlob) {
-        const formData = new FormData();
-        formData.append('file', imageBlob);
-        
-        try {
-            const response = await fetch(`${ML_SERVICE_URL}/analyze/eyes`, {
-                method: 'POST',
-                body: formData,
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            console.error('Error analyzing eyes:', error);
-            throw error;
-        }
-    },
-
-    /**
      * Analyze hand tremor
      * @param {Blob} videoBlob - Video blob to analyze
      * @returns {Promise<Object>} Analysis results
      */
     analyzeTremor: async function(videoBlob) {
+        console.log('Starting tremor analysis, blob size:', videoBlob.size);
         const formData = new FormData();
-        formData.append('file', videoBlob);
-        
+        formData.append('file', videoBlob, 'tremor.webm');
+
         try {
             const response = await fetch(`${ML_SERVICE_URL}/analyze/tremor`, {
                 method: 'POST',
                 body: formData,
+                headers: {
+                    'Accept': 'application/json',
+                },
+                mode: 'cors',
+                credentials: 'include'
             });
             
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return await response.json();
+            const data = await response.json();
+            console.log('Tremor analysis response:', data);
+            return data;
         } catch (error) {
-            console.error('Error analyzing tremor:', error);
+            console.error('Tremor analysis error:', error);
             throw error;
         }
     },
@@ -501,4 +519,4 @@ export const mlService = {
   startFingerTapping,
   stopFingerTapping,
   MLService
-}; 
+};

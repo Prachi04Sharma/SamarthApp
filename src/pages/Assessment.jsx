@@ -14,7 +14,7 @@ import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 
 // Import assessment components
-import EyeMovement from '../components/assessments/EyeMovement';
+import EyeMovement from '../components/assessments/EyeMovement/EyeMovementTest';
 import NeckMobility from '../components/assessments/NeckMobility';
 import FacialSymmetry from '../components/assessments/FacialSymmetry';
 import Tremor from '../components/assessments/Tremor';
@@ -41,7 +41,7 @@ const Assessment = () => {
     {
       id: 'eyeMovement',
       title: 'Eye Movement Assessment',
-      description: 'Assess eye movement and tracking capabilities.',
+      description: 'Track eye movements to detect potential neurological disorders.',
       icon: EyeIcon,
       component: EyeMovement,
       route: '/assessment/eye-movement'
@@ -105,14 +105,16 @@ const Assessment = () => {
       type: currentAssessment,
       timestamp: new Date().toISOString(),
       metrics,
+      userId: user.id
     };
     
     try {
-      // Here you would typically send the data to your backend
-      console.log('Assessment data:', assessmentData);
+      // Send assessment data to backend
+      // await assessmentService.saveAssessment(assessmentData);
+      console.log('Assessment completed:', assessmentData);
       setCurrentAssessment(null);
     } catch (error) {
-      console.error('Error processing assessment data:', error);
+      console.error('Error saving assessment:', error);
     }
   };
 
@@ -133,10 +135,10 @@ const Assessment = () => {
         </Box>
         <AssessmentComponent 
           userId={user.id}
-          onComplete={(data) => {
-            console.log('Assessment data:', data);
-            stopAssessment(data);
-          }}
+          onComplete={(data) => stopAssessment({
+            ...data,
+            assessmentType: assessment.id
+          })}
         />
       </Box>
     );
@@ -185,4 +187,4 @@ const Assessment = () => {
   );
 };
 
-export default Assessment; 
+export default Assessment;

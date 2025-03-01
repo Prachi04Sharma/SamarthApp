@@ -116,10 +116,23 @@ export const login = async (req, res) => {
 // Get current user
 export const getCurrentUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select('-password');
+    const user = await User.findById(req.user._id).select('-password');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
     res.json({
       success: true,
-      data: user
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.profile?.firstName,
+        lastName: user.profile?.lastName,
+        role: user.role
+      }
     });
   } catch (error) {
     console.error('Get current user error:', error);
@@ -128,4 +141,4 @@ export const getCurrentUser = async (req, res) => {
       message: 'Error fetching user data'
     });
   }
-}; 
+};

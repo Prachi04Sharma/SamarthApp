@@ -17,58 +17,54 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Initialize auth state
-  useEffect(() => {
-    const initAuth = async () => {
-      const token = getStoredToken();
+  const loadUser = async () => {
+    try {
+      const token = localStorage.getItem('token');
       if (!token) {
         setLoading(false);
-        return;
+        return null;
       }
 
-      try {
-        console.log('Initializing auth with stored token');
-        const userData = await auth.getCurrentUser();
-        if (userData) {
-          console.log('User data fetched successfully:', userData.email);
-          setUser(userData);
-        } else {
-          console.log('No user data returned');
-          setStoredToken(null);
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error.message);
-        // Clear token only on auth errors
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          console.log('Invalid token detected, clearing auth state');
-          setStoredToken(null);
-          setUser(null);
-        }
-        setError(error.message);
-      } finally {
-        setLoading(false);
+      const userData = await auth.getCurrentUser();
+      if (userData) {
+        setUser(userData);
+        setLoading(false);  // Set loading to false on success
+        return userData;
       }
-    };
+    } catch (error) {
+      console.error('Load user error:', error);
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token');
+        setUser(null);
+      }
+      setError(error.message);
+    }
+    setLoading(false);  // Ensure loading is set to false even if there's an error
+    return null;
+  };
 
-    initAuth();
+  // Initialize auth state
+  useEffect(() => {
+    loadUser();
   }, []);
 
   const login = async (credentials) => {
     try {
+      setLoading(true);  // Set loading true when login starts
       setError(null);
       const response = await auth.login(credentials);
-      const { token, user: userData } = response;
       
-      if (token && userData) {
-        setStoredToken(token);
-        setUser(userData);
-        return userData;
-      } else {
-        throw new Error('Invalid response from server');
+      if (response.token && response.user) {
+        localStorage.setItem('token', response.token);
+        setUser(response.user);
+        setLoading(false);  // Set loading false on success
+        return response.user;
       }
+      throw new Error('Invalid login response');
     } catch (error) {
-      console.error('Login error:', error.message);
+      console.error('Login error:', error);
       setError(error.message);
+      setLoading(false);  // Set loading false on error
       throw error;
     }
   };
@@ -113,19 +109,20 @@ export const AuthProvider = ({ children }) => {
     });
   }, [user, loading, error]);
 
-  const value = {
-    user,
-    login,
-    logout,
-    signup,
-    loading,
-    error,
-    isAuthenticated: !!user
-  };
-
   return (
-    <AuthContext.Provider value={value}>
-      {loading ? <div>Loading...</div> : children}
+    <AuthContext.Provider 
+      value={{
+        user,
+        login,
+        logout,
+        signup,
+        loading,
+        error,
+        isAuthenticated: !!user,
+        refreshUser: loadUser // Add this to allow manual refresh
+      }}
+    >
+      {children}
     </AuthContext.Provider>
   );
 };
@@ -138,4 +135,4 @@ export const useAuth = () => {
   return context;
 };
 
-export default AuthProvider; 
+export default AuthProvider;

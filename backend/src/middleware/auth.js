@@ -15,6 +15,13 @@ export const auth = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
+    if (!decoded || !decoded.userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token format'
+      });
+    }
+
     // Find user
     const user = await User.findById(decoded.userId).select('-password');
     if (!user) {
@@ -24,21 +31,15 @@ export const auth = async (req, res, next) => {
       });
     }
 
-    // Add user and token to request
+    // Add user info to request
     req.user = user;
     req.token = token;
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid token'
-      });
-    }
-    res.status(500).json({
+    res.status(401).json({
       success: false,
-      message: 'Server error'
+      message: 'Token is invalid or expired'
     });
   }
-}; 
+};

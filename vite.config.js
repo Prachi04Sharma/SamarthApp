@@ -32,6 +32,14 @@ export default defineConfig({
   ],
   server: {
     host: true,
-    port: 5173
+    port: 5173,
+    proxy: {
+      '/analyze': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+        ws: true
+      }
+    }
   }
 })
