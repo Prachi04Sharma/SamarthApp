@@ -3,12 +3,29 @@ import User from '../models/User.js';
 
 export const auth = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const authHeader = req.header('Authorization');
+    
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: 'No authentication token, authorization denied'
+      });
+    }
+
+    // Ensure the Authorization header follows the Bearer token format
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid authorization format. Use Bearer token'
+      });
+    }
+
+    const token = authHeader.split(' ')[1];
     
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: 'No authentication token, authorization denied'
+        message: 'Invalid token format'
       });
     }
 
@@ -18,7 +35,7 @@ export const auth = async (req, res, next) => {
     if (!decoded || !decoded.userId) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid token format'
+        message: 'Invalid token payload'
       });
     }
 

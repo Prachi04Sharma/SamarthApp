@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react';
-import { Box, Paper } from '@mui/material';
+import { useState, useRef, useEffect } from 'react';
+import { Box, Paper, Alert, Button } from '@mui/material';
+import { CheckCircle } from '@mui/icons-material';
 import AssessmentLayout from '../common/AssessmentLayout';
-import { assessmentService, assessmentTypes } from '../../services/assessmentService';
+import { specializedAssessments } from '../../services/api';
 
 const ResponseTime = ({ userId, onComplete }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -11,6 +12,7 @@ const ResponseTime = ({ userId, onComplete }) => {
   const [showStimulus, setShowStimulus] = useState(false);
   const [responses, setResponses] = useState([]);
   const [round, setRound] = useState(0);
+  const [saveStatus, setSaveStatus] = useState({ saving: false, error: null, success: false });
   const stimulusStartTime = useRef(null);
   const assessmentStartTime = useRef(null);
   const timeoutRef = useRef(null);
@@ -53,7 +55,8 @@ const ResponseTime = ({ userId, onComplete }) => {
     setMetrics(currentMetrics);
 
     if (round + 1 >= totalRounds) {
-      stopAssessment(newResponses);
+      // Stop assessment but don't auto-save
+      stopAssessmentAndShowResults(newResponses);
     } else {
       scheduleNextStimulus();
     }
@@ -71,11 +74,12 @@ const ResponseTime = ({ userId, onComplete }) => {
       slowestResponse: sortedTimes[sortedTimes.length - 1].toFixed(2),
       totalRounds: responseData.length,
       completedRounds: round + 1,
-      duration: ((Date.now() - assessmentStartTime.current) / 1000).toFixed(1)
+      duration: ((Date.now() - assessmentStartTime.current) / 1000).toFixed(1),
+      assessmentType: 'responseTime'
     };
   };
 
-  const stopAssessment = async (finalResponses = responses) => {
+  const stopAssessmentAndShowResults = (finalResponses = responses) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
@@ -85,23 +89,84 @@ const ResponseTime = ({ userId, onComplete }) => {
     if (finalResponses.length > 0) {
       const finalMetrics = calculateMetrics(finalResponses);
       setMetrics(finalMetrics);
-
-      try {
-        // Save assessment results
-        await assessmentService.saveAssessment(
-          userId,
-          assessmentTypes.RESPONSE_TIME,
-          finalMetrics
-        );
-
-        if (onComplete) {
-          onComplete(finalMetrics);
-        }
-      } catch (err) {
-        console.error('Error saving assessment results:', err);
-        setError('Error saving assessment results. Your progress may not be saved.');
-      }
+      // Don't save automatically - user will click the Complete Assessment button
     }
+  };
+
+  const stopAssessment = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setIsAssessing(false);
+    setShowStimulus(false);
+  };
+
+  // New function to handle saving assessment
+  const handleSaveAssessment = async () => {
+    if (!metrics) return;
+    
+    try {
+      setSaveStatus({ saving: true, error: null, success: false });
+      
+      const assessmentData = {
+        userId,
+        type: 'responseTime',
+        timestamp: new Date().toISOString(),
+        metrics: metrics,
+        responses: responses // Include raw response times
+      };
+      
+      console.log('Assessment completed:', assessmentData);
+      
+      const response = await specializedAssessments.responseTime.save(assessmentData);
+      
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.error || 'Failed to save response time assessment');
+      }
+      
+      console.log('Response time assessment saved successfully:', response.data);
+      setSaveStatus({ saving: false, error: null, success: true });
+      
+      // Call onComplete with the assessment data
+      if (onComplete) {
+        onComplete({
+          ...assessmentData,
+          id: response.data.data?._id || response.data.data?.id
+        });
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error saving response time assessment:', error);
+      setSaveStatus({ saving: false, error: error.message, success: false });
+      return null;
+    }
+  };
+
+  // Add a function to render the save status
+  const renderSaveStatus = () => {
+    if (saveStatus.saving) {
+      return (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Saving assessment results...
+        </Alert>
+      );
+    }
+    if (saveStatus.error) {
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          Failed to save: {saveStatus.error}
+        </Alert>
+      );
+    }
+    if (saveStatus.success) {
+      return (
+        <Alert severity="success" sx={{ mt: 2 }}>
+          Assessment saved successfully!
+        </Alert>
+      );
+    }
+    return null;
   };
 
   return (
@@ -141,18 +206,47 @@ const ResponseTime = ({ userId, onComplete }) => {
             maxWidth: 400,
             height: 300,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             p: 2
           }}
         >
-          <Box sx={{ textAlign: 'center', color: 'text.secondary' }}>
-            Click Start Assessment to begin
-          </Box>
+          {!metrics ? (
+            <Box sx={{ textAlign: 'center', color: 'text.secondary' }}>
+              Click Start Assessment to begin
+            </Box>
+          ) : (
+            <>
+              <Box sx={{ textAlign: 'center', mb: 2 }}>
+                <h3>Your Results</h3>
+                <p>Average: {metrics.averageResponseTime}ms</p>
+                <p>Fastest: {metrics.fastestResponse}ms</p>
+                <p>Slowest: {metrics.slowestResponse}ms</p>
+                <p>Rounds: {metrics.completedRounds}/{metrics.totalRounds}</p>
+              </Box>
+              
+              {renderSaveStatus()}
+              
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<CheckCircle />}
+                  onClick={handleSaveAssessment}
+                  disabled={saveStatus.saving || saveStatus.success}
+                >
+                  {saveStatus.saving ? 'Saving...' : 
+                   saveStatus.success ? 'Assessment Completed' : 
+                   'Complete Assessment'}
+                </Button>
+              </Box>
+            </>
+          )}
         </Paper>
       )}
     </AssessmentLayout>
   );
 };
 
-export default ResponseTime; 
+export default ResponseTime;

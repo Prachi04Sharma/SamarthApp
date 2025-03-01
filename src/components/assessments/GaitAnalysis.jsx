@@ -16,6 +16,7 @@ import {
   Speed as SpeedIcon,
   Balance as BalanceIcon,
   Timeline as PatternIcon,
+  CheckCircle
 } from '@mui/icons-material';
 import { Line } from 'react-chartjs-2';
 import AssessmentLayout from './AssessmentLayout';
@@ -29,7 +30,7 @@ import {
 } from '../visualizations/GaitVisualizations';
 import { GaitMetricsAnalyzer } from '../../services/metrics/gaitMetrics';
 import { useAuth } from '../../contexts/AuthContext';
-import { assessment } from '../../services/api';
+import { assessment, specializedAssessments } from '../../services/api';
 
 // MetricCard component
 const MetricCard = ({ title, value, icon, description }) => (
@@ -56,6 +57,7 @@ const GaitAnalysis = ({ userId, onComplete }) => {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [saveStatus, setSaveStatus] = useState({ saving: false, error: null, success: false });
   const [realtimeData, setRealtimeData] = useState({
     acceleration: [],
     balance: [],
@@ -82,6 +84,7 @@ const GaitAnalysis = ({ userId, onComplete }) => {
   const [baselineData, setBaselineData] = useState(null);
   const metricsAnalyzer = useRef(new GaitMetricsAnalyzer());
   const { currentUser } = useAuth();
+  const [analysisComplete, setAnalysisComplete] = useState(false);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -130,6 +133,8 @@ const GaitAnalysis = ({ userId, onComplete }) => {
       setIsRecording(true);
       setError(null);
       setMetrics(null);
+      setAnalysisComplete(false);
+      setSaveStatus({ saving: false, error: null, success: false });
 
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
@@ -164,7 +169,7 @@ const GaitAnalysis = ({ userId, onComplete }) => {
 
       // Auto-stop after 30 seconds
       timeoutRef.current = setTimeout(() => {
-        stopAssessment();
+        finishRecording();
       }, 30000);
 
     } catch (err) {
@@ -174,7 +179,7 @@ const GaitAnalysis = ({ userId, onComplete }) => {
     }
   };
 
-  const stopAssessment = async () => {
+  const finishRecording = async () => {
     try {
       setIsRecording(false);
       if (timeoutRef.current) {
@@ -186,10 +191,8 @@ const GaitAnalysis = ({ userId, onComplete }) => {
       stream?.getTracks().forEach(track => track.stop());
       stopGaitAnalysis();
 
-      // Save assessment results if metrics exist
-      if (metrics) {
-        await saveAssessmentResults();
-      }
+      // Mark analysis as complete but don't auto-save
+      setAnalysisComplete(true);
     } catch (err) {
       handleError(err);
     }
@@ -314,32 +317,91 @@ const GaitAnalysis = ({ userId, onComplete }) => {
 
   const saveAssessmentResults = async () => {
     try {
+      setSaveStatus({ saving: true, error: null, success: false });
+
+      // Prepare metrics data
+      const stabilityAvg = realtimeData.stabilityData.stabilityTrends.timeSeriesData
+        .reduce((sum, data) => sum + data.stability, 0) / 
+        Math.max(1, realtimeData.stabilityData.stabilityTrends.timeSeriesData.length);
+      
+      // Format the metrics for the specialized assessment API
       const assessmentData = {
-        user: userId,
-        type: 'GAIT_ANALYSIS',
-        data: {
-          timestamps: realtimeData.timestamps,
-          acceleration: realtimeData.acceleration,
-          balance: realtimeData.balance,
-          phaseData: realtimeData.phaseData,
-          stabilityData: realtimeData.stabilityData,
-          jointData: realtimeData.jointData,
-          symmetryData: realtimeData.symmetryData
-        },
+        userId,
+        type: 'gaitAnalysis',
+        timestamp: new Date().toISOString(),
         metrics: {
-          stability: metrics.stability || 0,
-          balance: metrics.balance || 0,
-          symmetry: metrics.symmetry || 0,
-          jointAngles: metrics.jointAngles || [],
-          overallScore: calculateOverallScore(metrics)
-        },
-        status: 'COMPLETED'
+          stability: {
+            score: metrics?.stability || stabilityAvg || 0,
+            lateralSway: realtimeData.stabilityData.stabilityTrends.timeSeriesData[0]?.lateralSway || 0,
+            verticalSway: realtimeData.stabilityData.stabilityTrends.timeSeriesData[0]?.verticalSway || 0
+          },
+          balance: {
+            score: metrics?.balance || 0
+          },
+          symmetry: {
+            overall: metrics?.symmetry || 0,
+            legSymmetry: realtimeData.symmetryData[0] || 0,
+            armSymmetry: realtimeData.symmetryData[2] || 0
+          },
+          jointAngles: {
+            hipLeft: realtimeData.jointData.hipAngles[realtimeData.jointData.hipAngles.length - 1] || 0,
+            kneeLeft: realtimeData.jointData.kneeAngles[realtimeData.jointData.kneeAngles.length - 1] || 0,
+            ankleLeft: realtimeData.jointData.ankleAngles[realtimeData.jointData.ankleAngles.length - 1] || 0
+          },
+          gait: {
+            speed: calculateAverageSpeed(realtimeData.acceleration),
+            walkingTime: (realtimeData.timestamps[realtimeData.timestamps.length - 1] - 
+                        realtimeData.timestamps[0]) / 1000 // in seconds
+          },
+          // Include time series data for detailed analysis
+          timeSeriesData: {
+            timestamps: realtimeData.timestamps,
+            acceleration: realtimeData.acceleration,
+            balance: realtimeData.balance,
+            phaseData: realtimeData.phaseData,
+            stabilityData: realtimeData.stabilityData,
+            jointData: realtimeData.jointData,
+            symmetryData: realtimeData.symmetryData
+          }
+        }
       };
 
-      await assessmentService.saveAssessment(userId, 'GAIT_ANALYSIS', assessmentData);
+      // Use specialized assessment API instead
+      const response = await specializedAssessments.gaitAnalysis.save(assessmentData);
+      
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.error || 'Failed to save gait analysis assessment');
+      }
+      
+      console.log('Gait analysis assessment saved successfully:', response.data);
+      
+      setSaveStatus({ saving: false, error: null, success: true });
+      
+      if (onComplete) {
+        onComplete({
+          ...assessmentData,
+          id: response.data.data?.id || response.data.data?._id
+        });
+      }
     } catch (err) {
       console.error('Failed to save assessment results:', err);
+      setSaveStatus({ saving: false, error: err.message, success: false });
+      setError(`Failed to save results: ${err.message}`);
     }
+  };
+
+  // Helper function to calculate average speed
+  const calculateAverageSpeed = (accelerationData) => {
+    if (!accelerationData || !accelerationData.length) return 0;
+    
+    // Simple average of velocity magnitudes
+    const avgSpeed = accelerationData.reduce((sum, vel) => {
+      const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+      return sum + speed;
+    }, 0) / accelerationData.length;
+    
+    // Convert to approximate m/s (this would need calibration in a real app)
+    return avgSpeed * 1.2; // Scaling factor
   };
 
   const calculateOverallScore = (metrics) => {
@@ -355,6 +417,32 @@ const GaitAnalysis = ({ userId, onComplete }) => {
   const handleError = (error) => {
     setError(error.message);
     setIsRecording(false);
+  };
+
+  // Add a function to render the save status
+  const renderSaveStatus = () => {
+    if (saveStatus.saving) {
+      return (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Saving assessment results...
+        </Alert>
+      );
+    }
+    if (saveStatus.error) {
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          Failed to save: {saveStatus.error}
+        </Alert>
+      );
+    }
+    if (saveStatus.success) {
+      return (
+        <Alert severity="success" sx={{ mt: 2 }}>
+          Assessment saved successfully!
+        </Alert>
+      );
+    }
+    return null;
   };
 
   const renderMetrics = () => {
@@ -513,12 +601,30 @@ const GaitAnalysis = ({ userId, onComplete }) => {
                 fullWidth
                 variant="contained"
                 color={isRecording ? 'error' : 'primary'}
-                onClick={isRecording ? stopAssessment : startAssessment}
-                disabled={loading}
+                onClick={isRecording ? finishRecording : startAssessment}
+                disabled={loading || (analysisComplete && !saveStatus.success)}
                 startIcon={<WalkIcon />}
               >
                 {isRecording ? 'Stop Recording' : 'Start Recording'}
               </Button>
+              
+              {renderSaveStatus()}
+              
+              {/* Add Complete Assessment button */}
+              {analysisComplete && !saveStatus.success && (
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="primary"
+                  onClick={saveAssessmentResults}
+                  disabled={saveStatus.saving}
+                  startIcon={<CheckCircle />}
+                  sx={{ mt: 2 }}
+                >
+                  {saveStatus.saving ? 'Saving...' : 'Complete Assessment'}
+                </Button>
+              )}
+              
               {error && (
                 <Alert severity="error" sx={{ mt: 2 }}>
                   {error}
@@ -535,4 +641,4 @@ const GaitAnalysis = ({ userId, onComplete }) => {
   );
 };
 
-export default GaitAnalysis; 
+export default GaitAnalysis;

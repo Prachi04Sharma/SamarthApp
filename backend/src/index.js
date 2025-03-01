@@ -4,7 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import userRoutes from './routes/user.js';
 import assessmentRoutes from './routes/assessment.js';
-import specializedAssessmentRoutes from './routes/specialized-assessments.js'; // Add this import
+import specializedAssessmentRoutes from './routes/specialized-assessments.js'; // Already imported
 import authRoutes from './routes/auth.js';
 
 // Initialize environment variables
@@ -24,7 +24,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/assessments', assessmentRoutes);
-app.use('/api/specialized-assessments', specializedAssessmentRoutes); // Add this route
+app.use('/api/specialized-assessments', specializedAssessmentRoutes); // Already added
 
 // Add error handling for 404
 app.use((req, res, next) => {

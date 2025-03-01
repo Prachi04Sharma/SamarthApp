@@ -8,7 +8,8 @@ import {
   Timer as TimerIcon,
   DirectionsWalk as WalkIcon,
   TouchApp as TapIcon,
-  ArrowBack as BackIcon
+  ArrowBack as BackIcon,
+  Mic as MicIcon
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,6 +22,7 @@ import Tremor from '../components/assessments/Tremor';
 import ResponseTime from '../components/assessments/ResponseTime';
 import GaitAnalysis from '../components/assessments/GaitAnalysis';
 import FingerTapping from '../components/assessments/FingerTapping';
+import SpeechPatternAssessment from '../components/assessments/SpeechPatternAssessment';
 
 const Assessment = () => {
   const [currentAssessment, setCurrentAssessment] = useState(null);
@@ -93,6 +95,14 @@ const Assessment = () => {
       icon: TapIcon,
       component: FingerTapping,
       route: '/assessment/finger-tapping'
+    },
+    {
+      id: 'speechPattern',
+      title: 'Speech Pattern Assessment',
+      description: 'Analyze speech patterns, rhythm, and pronunciation.',
+      icon: MicIcon,
+      component: SpeechPatternAssessment,
+      route: '/assessment/speech-pattern'
     }
   ];
 
