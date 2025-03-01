@@ -6,3 +6,5 @@ numpy==1.26.4
 scipy==1.12.0
 python-multipart==0.0.9
 pillow==10.2.0
+python-dotenv  # For environment variable management
+aiofiles       # For async file operations, which could help with video handling
