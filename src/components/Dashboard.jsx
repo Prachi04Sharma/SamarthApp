@@ -106,7 +106,7 @@ const Dashboard = () => {
           <Grid item xs={12} md={6} lg={3}>
             <FeatureCard
               title="Assessments"
-              value="5"
+              value="8"
               subtitle="Total evaluations"
               icon={Assessment}
               onClick={() => navigate('/assessment')}
@@ -123,7 +123,7 @@ const Dashboard = () => {
               gradient="linear-gradient(135deg, #4CAF50 0%, #45B649 100%)"
             />
           </Grid>
-          <Grid item xs={12} md={6} lg={3}>
+          {/* <Grid item xs={12} md={6} lg={3}>
             <FeatureCard
               title="Health Score"
               value="8.5"
@@ -142,7 +142,7 @@ const Dashboard = () => {
               onClick={() => navigate('/tasks')}
               gradient="linear-gradient(135deg, #8E2DE2 0%, #4A00E0 100%)"
             />
-          </Grid>
+          </Grid> */}
         </Grid>
 
         {/* Quick Actions */}

@@ -72,6 +72,8 @@ export const AuthProvider = ({ children }) => {
   const signup = async (email, password, profile) => {
     try {
       setError(null);
+      setLoading(true);
+
       const response = await auth.register({
         email,
         password,
@@ -79,17 +81,22 @@ export const AuthProvider = ({ children }) => {
         lastName: profile.lastName
       });
       
-      if (response.success && response.token && response.user) {
+      if (response.success && response.token) {
         setStoredToken(response.token);
         setUser(response.user);
         return response;
-      } else {
-        throw new Error('Invalid response from server');
       }
+      
+      throw new Error(response.message || 'Registration failed');
     } catch (error) {
-      console.error('Signup error:', error.message);
-      setError(error.message);
+      console.error('Signup error:', error);
+      const message = error.errors 
+        ? Object.values(error.errors).join(', ') 
+        : error.message;
+      setError(message);
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 

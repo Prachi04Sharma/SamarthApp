@@ -3,6 +3,7 @@ import FacialSymmetryAssessment from '../models/FacialSymmetryAssessment.js';
 export const facialSymmetryService = {
   async saveAssessment(assessmentData) {
     try {
+      // Simply pass the assessment data as is to preserve the format
       const assessment = new FacialSymmetryAssessment(assessmentData);
       return await assessment.save();
     } catch (error) {

@@ -374,25 +374,57 @@ export const MLService = {
   },
 
     /**
-     * Analyze facial symmetry
+     * Analyze facial symmetry with enhanced accuracy
      * @param {Blob} imageBlob - Image blob to analyze
-     * @returns {Promise<Object>} Analysis results
+     * @returns {Promise<Object>} Detailed analysis results
      */
     analyzeFace: async function(imageBlob) {
         const formData = new FormData();
         formData.append('file', imageBlob);
         
         try {
-            const response = await fetch(`${ML_SERVICE_URL}/analyze/face`, {
+            console.log('Sending facial symmetry analysis request');
+            const response = await fetch(`${this.BASE_URL}/analyze/face`, {
                 method: 'POST',
                 body: formData,
+                mode: 'cors',
+                credentials: 'include',
+                headers: {
+                    'Accept': 'application/json',
+                    'Origin': 'http://localhost:5173'
+                }
             });
             
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                let errorMessage;
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    errorMessage = errorJson.detail || `HTTP error! status: ${response.status}`;
+                } catch {
+                    errorMessage = errorText || `HTTP error! status: ${response.status}`;
+                }
+                throw new Error(errorMessage);
             }
             
-            return await response.json();
+            const result = await response.json();
+            
+            // Process the enhanced facial symmetry data
+            return {
+                success: result.success,
+                symmetry_score: result.symmetry_score,
+                landmarks: result.landmarks || {},
+                midline: result.midline || {},
+                metrics: {
+                    eye_symmetry: result.metrics?.eye_symmetry || 0,
+                    mouth_symmetry: result.metrics?.mouth_symmetry || 0,
+                    jaw_symmetry: result.metrics?.jaw_symmetry || 0,
+                    eyebrow_symmetry: result.metrics?.eyebrow_symmetry || 0,
+                    face_tilt: result.metrics?.face_tilt || 0,
+                    detailed_metrics: result.metrics?.detailed_metrics || {}
+                },
+                neurological_indicators: result.neurological_indicators || {}
+            };
         } catch (error) {
             console.error('Error analyzing face:', error);
             throw error;

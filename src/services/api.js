@@ -42,29 +42,21 @@ api.interceptors.response.use(
 
 // Auth API
 export const auth = {
-  register: async (data) => {
+  register: async (userData) => {
     try {
-      console.log('Sending registration data:', {
-        ...data,
-        password: '[REDACTED]'
-      });
-      
       const response = await api.post('/auth/register', {
-        email: data.email,
-        password: data.password,
-        firstName: data.firstName,
-        lastName: data.lastName
+        email: userData.email,
+        password: userData.password,
+        firstName: userData.firstName,
+        lastName: userData.lastName
       });
-      
-      console.log('Registration response:', response.data);
+
       return response.data;
     } catch (error) {
-      console.error('Registration error:', {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message
-      });
-      throw error.response?.data || error;
+      if (error.response?.data) {
+        throw error.response.data;
+      }
+      throw error;
     }
   },
   login: async (data) => {

@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 // Register new user
 export const register = async (req, res) => {
   try {
-    const { email, password, profile } = req.body;
+    const { email, password, firstName, lastName } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -16,11 +16,15 @@ export const register = async (req, res) => {
       });
     }
 
-    // Create new user
+    // Create new user with properly formatted data
     const user = new User({
       email,
       password,
-      profile
+      name: `${firstName} ${lastName}`,
+      profile: {
+        firstName,
+        lastName
+      }
     });
 
     await user.save();
@@ -34,17 +38,28 @@ export const register = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      data: {
-        user: {
-          id: user._id,
-          email: user.email,
-          profile: user.profile
-        },
-        token
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        firstName: user.profile.firstName,
+        lastName: user.profile.lastName
       }
     });
+
   } catch (error) {
     console.error('Registration error:', error);
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: Object.keys(error.errors).reduce((acc, key) => {
+          acc[key] = error.errors[key].message;
+          return acc;
+        }, {})
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Error registering user'

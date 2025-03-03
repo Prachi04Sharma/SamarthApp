@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { Box, Typography, Card, CardContent, Grid, IconButton } from '@mui/material';
+import { useState, useEffect, useCallback } from 'react';
+import { Box, Typography, Card, CardContent, Grid, IconButton, Tooltip, Badge } from '@mui/material';
+import { Lock as LockIcon } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import {
   RemoveRedEye as EyeIcon,
   AccessibilityNew as MobilityIcon,
@@ -26,7 +28,39 @@ import SpeechPatternAssessment from '../components/assessments/SpeechPatternAsse
 
 const Assessment = () => {
   const [currentAssessment, setCurrentAssessment] = useState(null);
+  const [completedAssessments, setCompletedAssessments] = useState([]);
   const { user } = useAuth();
+  const navigate = useNavigate();
+
+  // Helper to check if all assessments are completed
+  const checkAllAssessmentsCompleted = useCallback((completed, types) => {
+    return types.every(assessment => completed.includes(assessment.id));
+  }, []);
+
+  // Load completed assessments from localStorage on component mount
+  useEffect(() => {
+    if (user) {
+      // Get the current session flag
+      const isNewSession = localStorage.getItem(`new_assessment_session_${user.id}`);
+      
+      // If starting a new assessment session, clear previous completed assessments
+      if (isNewSession === 'true') {
+        localStorage.removeItem(`completed_assessments_${user.id}`);
+        localStorage.setItem(`new_assessment_session_${user.id}`, 'false');
+        setCompletedAssessments([]);
+      } else {
+        // Otherwise load any existing progress
+        const saved = localStorage.getItem(`completed_assessments_${user.id}`);
+        if (saved) {
+          try {
+            setCompletedAssessments(JSON.parse(saved));
+          } catch (e) {
+            console.error('Failed to parse completed assessments', e);
+          }
+        }
+      }
+    }
+  }, [user]);
 
   // Add loading state for user
   if (!user) {
@@ -106,8 +140,23 @@ const Assessment = () => {
     }
   ];
 
-  const startAssessment = (assessmentType) => {
-    setCurrentAssessment(assessmentType);
+  // Function to check if an assessment is available
+  const isAssessmentAvailable = (index) => {
+    if (index === 0) return true; // First assessment is always available
+    // Assessment is available if previous assessment is completed
+    return completedAssessments.includes(assessmentTypes[index - 1].id);
+  };
+
+  // Function to check if assessment is completed
+  const isAssessmentCompleted = (id) => {
+    return completedAssessments.includes(id);
+  };
+
+  const startAssessment = (assessmentType, index) => {
+    // Only allow starting assessment if it's available
+    if (isAssessmentAvailable(index)) {
+      setCurrentAssessment(assessmentType);
+    }
   };
 
   const stopAssessment = async (metrics) => {
@@ -122,9 +171,43 @@ const Assessment = () => {
       // Send assessment data to backend
       // await assessmentService.saveAssessment(assessmentData);
       console.log('Assessment completed:', assessmentData);
-      setCurrentAssessment(null);
+      
+      // Mark current assessment as completed
+      const updatedCompletedAssessments = [...completedAssessments];
+      if (!updatedCompletedAssessments.includes(currentAssessment)) {
+        updatedCompletedAssessments.push(currentAssessment);
+      }
+      
+      // Save to localStorage
+      localStorage.setItem(
+        `completed_assessments_${user.id}`,
+        JSON.stringify(updatedCompletedAssessments)
+      );
+      
+      setCompletedAssessments(updatedCompletedAssessments);
+      
+      // Check if all assessments are completed
+      if (checkAllAssessmentsCompleted(updatedCompletedAssessments, assessmentTypes)) {
+        // All assessments completed - reset for next time and navigate to dashboard
+        localStorage.setItem(`new_assessment_session_${user.id}`, 'true');
+        navigate('/dashboard');
+        return;
+      }
+      
+      // Find the next assessment that isn't completed yet
+      const currentIndex = assessmentTypes.findIndex(a => a.id === currentAssessment);
+      const nextIndex = currentIndex + 1;
+      
+      if (nextIndex < assessmentTypes.length) {
+        // Automatically navigate to the next assessment
+        setCurrentAssessment(assessmentTypes[nextIndex].id);
+      } else {
+        // All assessments completed
+        setCurrentAssessment(null);
+      }
     } catch (error) {
       console.error('Error saving assessment:', error);
+      setCurrentAssessment(null);
     }
   };
 
@@ -159,33 +242,58 @@ const Assessment = () => {
       <Typography variant="h5" gutterBottom align="center">
         Available Assessments
       </Typography>
+      <Typography color="text.secondary" align="center" sx={{ mb: 3 }}>
+        Complete assessments in sequence to unlock the next one
+      </Typography>
       <Grid container spacing={2}>
-        {assessmentTypes.map((assessment) => (
-          <Grid item xs={12} key={assessment.id}>
-            <Card 
-              sx={{ 
-                cursor: 'pointer',
-                '&:hover': {
-                  transform: 'scale(1.02)',
-                  transition: 'transform 0.2s ease-in-out'
-                }
-              }}
-              onClick={() => startAssessment(assessment.id)}
-            >
-              <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-                <assessment.icon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
-                <Box>
-                  <Typography variant="h6" gutterBottom>
-                    {assessment.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {assessment.description}
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
+        {assessmentTypes.map((assessment, index) => {
+          const isAvailable = isAssessmentAvailable(index);
+          const isCompleted = isAssessmentCompleted(assessment.id);
+          
+          return (
+            <Grid item xs={12} key={assessment.id}>
+              <Card 
+                sx={{ 
+                  cursor: isAvailable ? 'pointer' : 'default',
+                  opacity: isAvailable ? 1 : 0.6,
+                  transition: 'transform 0.2s ease-in-out, opacity 0.2s ease-in-out',
+                  '&:hover': isAvailable ? {
+                    transform: 'scale(1.02)',
+                  } : {},
+                  position: 'relative',
+                }}
+                onClick={() => isAvailable && startAssessment(assessment.id, index)}
+              >
+                <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+                  {isCompleted ? (
+                    <Badge 
+                      color="success" 
+                      badgeContent="✓" 
+                      overlap="circular"
+                    >
+                      <assessment.icon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
+                    </Badge>
+                  ) : (
+                    <assessment.icon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
+                  )}
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="h6" gutterBottom>
+                      {assessment.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {assessment.description}
+                    </Typography>
+                  </Box>
+                  {!isAvailable && (
+                    <Tooltip title="Complete previous assessments to unlock">
+                      <LockIcon sx={{ color: 'text.disabled' }} />
+                    </Tooltip>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
       </Grid>
     </Box>
   );

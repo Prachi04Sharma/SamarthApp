@@ -3,18 +3,23 @@ import { facialSymmetryService } from '../services/facialSymmetryService.js';
 export const facialSymmetryController = {
   async save(req, res) {
     try {
-      const { userId, metrics } = req.body;
+      const { userId, symmetry_score, landmarks, midline, metrics, neurological_indicators } = req.body;
 
-      if (!userId || !metrics) {
+      if (!userId) {
         return res.status(400).json({
           success: false,
           error: 'Missing required fields'
         });
       }
 
+      // Save assessment with original format
       const assessment = await facialSymmetryService.saveAssessment({
         userId,
+        symmetry_score,
+        landmarks,
+        midline,
         metrics,
+        neurological_indicators,
         timestamp: new Date(),
         status: 'COMPLETED'
       });
