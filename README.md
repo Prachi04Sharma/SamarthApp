@@ -3,6 +3,54 @@
 ## Overview
 SAMARTH is a comprehensive neurological assessment web platform designed to monitor and evaluate symptoms of various neurological conditions including Bell's Palsy, Amyotrophic Lateral Sclerosis (ALS), and Parkinson's Disease. The platform utilizes computer vision, machine learning, signal processing techniques, and AI analysis to assess neuromotor function through various specialized tests.
 
+## Screenshots
+
+Below are snapshots from the SAMARTH App:
+
+### Dashboard
+![{CADE1FBC-7A63-4695-9823-C1E377D53CA2}](https://github.com/user-attachments/assets/c85ca45b-f970-456b-9b5c-19b7048a1a6f)
+
+*Main dashboard showing available assessments, recent activities, and user statistics*
+
+### Assessment Tests
+![{095E06A6-D17B-4E40-9231-DBE5FF26E8BE}](https://github.com/user-attachments/assets/7d7fa6da-cbed-41f7-b85b-037a593be725)
+
+
+### Facial Symmetry Assessment
+![{BB6D9554-DE27-4701-87D3-8141405384CF}](https://github.com/user-attachments/assets/6e18d2b5-b3f5-4f26-9c26-6f7b984921f1)
+![{DB790AB3-8C3F-4040-85A0-B9BC190161D2}](https://github.com/user-attachments/assets/46236cb1-f1f9-4170-ade1-af038b8a2156)
+
+*Real-time facial landmark detection and symmetry analysis*
+
+### Eye Movement Analysis
+![{3BC6480D-BC34-4CFC-AC73-453B3A503D99}](https://github.com/user-attachments/assets/f172ea6e-87e6-4bdd-9b57-e0d5224f3e0e)
+
+*Eye tracking visualization showing movement patterns and metrics*
+
+### Tremor Analysis
+![{D1DC8793-A894-4CE8-B9C1-EAD6A5D20B9E}](https://github.com/user-attachments/assets/3ea0d0f3-469f-46ca-8dbe-96c114ba00cb)
+![{EDFEAA42-C09B-47E9-A5D1-1A397035B967}](https://github.com/user-attachments/assets/0c1a59b7-df57-4ab3-9d5a-4d41709160bd)
+
+
+*Hand tremor frequency and amplitude visualization with FFT analysis*
+
+### Analytics Dashboard
+![{6B030F41-B318-42DC-B23F-0281623D8A05}](https://github.com/user-attachments/assets/c9eec1fc-04fa-40bd-b9bc-0e20cb851ef3)
+
+
+*Comprehensive visualization of assessment results and progress over time*
+
+### Assessment Report
+![{98792714-E466-4878-9EFA-020A9A7E9A40}](https://github.com/user-attachments/assets/566998c9-3f18-4f1f-8189-4eb1f5548179)
+![{D848FA46-97DD-4778-89DA-71DA1E84B249}](https://github.com/user-attachments/assets/af1c719f-cb15-4bbf-8290-22d807543b26)
+
+*Sample assessment report with AI-powered insights*
+
+### Therapy Page
+![{04C1DA46-4BB4-4763-B82D-CD4D29461D8C}](https://github.com/user-attachments/assets/69b04e97-2bdd-493d-8acc-8a923ecb3afb)
+
+
+
 ## Tech Stack
 
 ### Frontend
@@ -81,34 +129,7 @@ SAMARTH is a comprehensive neurological assessment web platform designed to moni
 - Trend identification across multiple assessments
 - Personalized recommendations based on assessment history
 
-## Screenshots
 
-Below are snapshots from the SAMARTH App:
-
-### Dashboard
-![{CADE1FBC-7A63-4695-9823-C1E377D53CA2}](https://github.com/user-attachments/assets/c85ca45b-f970-456b-9b5c-19b7048a1a6f)
-
-*Main dashboard showing available assessments, recent activities, and user statistics*
-
-### Facial Symmetry Assessment
-![Facial Symmetry](./docs/screenshots/facial-symmetry.png)
-*Real-time facial landmark detection and symmetry analysis*
-
-### Eye Movement Analysis
-![Eye Movement](./docs/screenshots/eye-movement.png)
-*Eye tracking visualization showing movement patterns and metrics*
-
-### Tremor Analysis
-![Tremor Analysis](./docs/screenshots/tremor.png)
-*Hand tremor frequency and amplitude visualization with FFT analysis*
-
-### Analytics Dashboard
-![Analytics](./docs/screenshots/analytics.png)
-*Comprehensive visualization of assessment results and progress over time*
-
-### Assessment Report
-![Report](./docs/screenshots/report.png)
-*Sample assessment report with AI-powered insights*
 
 ## Installation
 1. Clone the repository:
