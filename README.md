@@ -81,6 +81,34 @@ SAMARTH is a comprehensive neurological assessment web platform designed to moni
 - Trend identification across multiple assessments
 - Personalized recommendations based on assessment history
 
+## Screenshots
+
+Below are snapshots from the SAMARTH App:
+
+### Dashboard
+![Dashboard](./docs/screenshots/dashboard.png)
+*Main dashboard showing available assessments, recent activities, and user statistics*
+
+### Facial Symmetry Assessment
+![Facial Symmetry](./docs/screenshots/facial-symmetry.png)
+*Real-time facial landmark detection and symmetry analysis*
+
+### Eye Movement Analysis
+![Eye Movement](./docs/screenshots/eye-movement.png)
+*Eye tracking visualization showing movement patterns and metrics*
+
+### Tremor Analysis
+![Tremor Analysis](./docs/screenshots/tremor.png)
+*Hand tremor frequency and amplitude visualization with FFT analysis*
+
+### Analytics Dashboard
+![Analytics](./docs/screenshots/analytics.png)
+*Comprehensive visualization of assessment results and progress over time*
+
+### Assessment Report
+![Report](./docs/screenshots/report.png)
+*Sample assessment report with AI-powered insights*
+
 ## Installation
 1. Clone the repository:
    ```sh
