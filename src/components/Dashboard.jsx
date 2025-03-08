@@ -18,7 +18,8 @@ import {
   Analytics,
   TrendingUp,
   Speed,
-  Assignment
+  Assignment,
+  LocalHospital
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -123,6 +124,16 @@ const Dashboard = () => {
               gradient="linear-gradient(135deg, #4CAF50 0%, #45B649 100%)"
             />
           </Grid>
+          <Grid item xs={12} md={6} lg={3}>
+            <FeatureCard
+              title="Therapies"
+              value="3"
+              subtitle="Available treatments"
+              icon={LocalHospital}
+              onClick={() => navigate('/therapies')}
+              gradient="linear-gradient(135deg, #9C27B0 0%, #673AB7 100%)"
+            />
+          </Grid>
           {/* <Grid item xs={12} md={6} lg={3}>
             <FeatureCard
               title="Health Score"
@@ -215,4 +226,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard; 
+export default Dashboard;
