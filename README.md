@@ -86,7 +86,8 @@ SAMARTH is a comprehensive neurological assessment web platform designed to moni
 Below are snapshots from the SAMARTH App:
 
 ### Dashboard
-![Dashboard](./docs/screenshots/dashboard.png)
+![{CADE1FBC-7A63-4695-9823-C1E377D53CA2}](https://github.com/user-attachments/assets/c85ca45b-f970-456b-9b5c-19b7048a1a6f)
+
 *Main dashboard showing available assessments, recent activities, and user statistics*
 
 ### Facial Symmetry Assessment
