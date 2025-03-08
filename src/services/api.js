@@ -40,6 +40,38 @@ api.interceptors.response.use(
   }
 );
 
+// Add response interceptor for better error handling
+api.interceptors.response.use(
+  (response) => {
+    // Some APIs return data in response.data.data format, handle that here
+    if (response.data && response.data.data !== undefined) {
+      return response;
+    }
+    return response;
+  },
+  (error) => {
+    // Log specific details about API errors
+    if (error.response) {
+      console.error('API Error Response:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      });
+      
+      // Handle specific error codes
+      if (error.response.status === 404) {
+        console.warn('Resource not found. Please check your API endpoint.');
+      }
+    } else if (error.request) {
+      console.error('API Request Error (No Response):', error.request);
+    } else {
+      console.error('API Error:', error.message);
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
 // Auth API
 export const auth = {
   register: async (userData) => {
@@ -129,14 +161,35 @@ export const assessment = {
   },
   getBaseline: async (type) => {
     try {
-      const response = await api.get('/assessments/baseline', { params: { type } });
+      // Get current user ID to pass with request
+      const userId = localStorage.getItem('userId');
+      
+      // Log for debugging
+      console.log('Getting baseline data with params:', { type, userId });
+      
+      if (!userId) {
+        console.warn('No userId found in localStorage for baseline request');
+        // Return empty data instead of throwing an error
+        return { data: { success: true, data: null } };
+      }
+      
+      const response = await api.get('/assessments/baseline', { 
+        params: { 
+          type,
+          userId
+        } 
+      });
+      
+      console.log('Baseline response:', response.data);
       return response.data;
     } catch (error) {
       if (error.response?.status === 404) {
         return { data: null };
       }
       console.error('API Error:', error.response?.data || error.message);
-      throw error;
+      
+      // Return empty data instead of throwing
+      return { data: null };
     }
   },
   delete: async (id) => {
@@ -157,7 +210,18 @@ export const assessmentService = {
   }
 };
 
+// Update the specialized assessments API path to match your endpoints
 export const specializedAssessments = {
+  neckMobility: {
+    save: (data) => axios.post('/api/specialized-assessments/neck-mobility', data),
+    getHistory: (userId, limit = 10) => axios.get(`/api/specialized-assessments/neck-mobility/history?userId=${userId}&limit=${limit}`),
+    getBaseline: (userId) => axios.get(`/api/specialized-assessments/neck-mobility/baseline/${userId}`),
+    complete: (formData) => axios.post('/api/specialized-assessments/neck-mobility/complete', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
   eyeMovement: {
     save: async (data) => {
       try {
@@ -174,23 +238,6 @@ export const specializedAssessments = {
     },
     getHistory: (userId, limit) => api.get('/specialized-assessments/eye-movement/history', { params: { userId, limit } }),
     getBaseline: (userId) => api.get(`/specialized-assessments/eye-movement/baseline/${userId}`)
-  },
-  neckMobility: {
-    save: async (data) => {
-      try {
-        const response = await api.post('/specialized-assessments/neck-mobility', data);
-        return response; // Return the full response object
-      } catch (error) {
-        console.error('API Error in neckMobility.save:', {
-          status: error.response?.status,
-          data: error.response?.data,
-          message: error.message
-        });
-        throw error;
-      }
-    },
-    getHistory: (userId, limit) => api.get('/specialized-assessments/neck-mobility/history', { params: { userId, limit } }),
-    getBaseline: (userId) => api.get(`/specialized-assessments/neck-mobility/baseline/${userId}`)
   },
   facialSymmetry: {
     save: (data) => api.post('/specialized-assessments/facial-symmetry', data),

@@ -115,14 +115,30 @@ const GaitAnalysis = ({ userId, onComplete }) => {
     };
   }, []);
 
+  // Update the loadBaselineData function to pass userId
   const loadBaselineData = async () => {
     try {
-      const response = await assessmentService.getBaselineData('GAIT_ANALYSIS');
-      setBaselineData(response?.data);
-      metricsAnalyzer.current.baselineData = response?.data;
+      // Get current user ID from auth context or localStorage
+      const userId = localStorage.getItem('userId');
+      
+      if (!userId) {
+        console.warn('No user ID available for baseline data');
+        return;
+      }
+      
+      // Call the getBaselineData function with both type and userId
+      const baseline = await assessmentService.getBaselineData(ASSESSMENT_TYPES.GAIT, userId);
+      
+      if (baseline) {
+        console.log('Baseline data loaded:', baseline);
+        setBaselineData(baseline);
+      } else {
+        console.log('No baseline data available');
+        setBaselineData(null);
+      }
     } catch (error) {
       console.error('Error loading baseline data:', error);
-      // Don't set error state as baseline data is optional
+      setBaselineData(null);
     }
   };
 

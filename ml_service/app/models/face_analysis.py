@@ -308,6 +308,17 @@ class FaceAnalyzer:
         """Calculate comprehensive jaw symmetry metrics."""
         jaw_points = np.array([(p["x"], p["y"]) for p in landmarks["jawline"]])
         
+        # Check if we have enough jaw points for calculation
+        if len(jaw_points) < 3:
+            # Return default values if not enough points
+            return 0, {
+                "chin_position": {"x": 0, "y": 0},
+                "midline_position": 0,
+                "chin_deviation": 0,
+                "jaw_angles": {"left": 0, "right": 0, "difference": 0, "symmetry": 0},
+                "jaw_lengths": {"left": 0, "right": 0, "ratio": 0}
+            }
+        
         # Find the chin point (lowest point)
         chin_idx = np.argmax(jaw_points[:, 1])
         chin_point = jaw_points[chin_idx]
@@ -366,8 +377,12 @@ class FaceAnalyzer:
             right_length = 0
             length_ratio = 0
         
-        # Combined jaw symmetry score
-        jaw_symmetry = 0.3 * (1 - chin_deviation / 50) + 0.4 * angle_symmetry + 0.3 * length_ratio
+        # Combined jaw symmetry score with sanity check to avoid returning 0
+        jaw_symmetry = 0.3 * max(0, min(1, 1 - chin_deviation / 50)) + 0.4 * angle_symmetry + 0.3 * length_ratio
+        
+        # Ensure we're not returning zero when we have valid jaw points
+        if jaw_symmetry < 0.05 and len(jaw_points) >= 3:
+            jaw_symmetry = 0.05  # Minimum non-zero value
         
         metrics = {
             "chin_position": {"x": float(chin_point[0]), "y": float(chin_point[1])},
@@ -523,24 +538,58 @@ class FaceAnalyzer:
         }
         
         # Parkinson's indicator (reduced facial expressiveness, symmetry usually less affected)
-        # Low scores here could suggest reduced mobility rather than asymmetry
-        parkinsons_score = min(0.6, max(0, 0.6 - (bells_palsy_score + stroke_score)))
-        parkinsons_risk = "low"
+        # Use a better calculation based on research
+        # Values should be consistent with risk assessment
+        parkinsons_score = 0.0
         
+        # Calculate Parkinson's score using relevant metrics
+        # Higher score = higher risk, scale from 0-1 (multiply by 100 for percentage)
+        mouth_symmetry = 1 - mouth_metrics["normalized_deviation"]
+        eye_movement = eye_metrics["vertical_alignment"]
+        
+        # In Parkinson's, hypomimia (facial masking) is common
+        # We need to detect reduced facial movement/expression
+        parkinsons_score = (
+            (0.4 * (1 - mouth_symmetry)) +  # Reduced mouth movement
+            (0.3 * (1 - eye_movement)) +     # Reduced eye expressiveness
+            (0.3 * (1 - eyebrow_height_ratio))  # Reduced eyebrow movement
+        ) * 0.7  # Scale factor to align with other scores
+        
+        # Proper risk categorization for Parkinson's
+        parkinsons_risk = "low"
+        if parkinsons_score > 0.4:
+            parkinsons_risk = "high"
+        elif parkinsons_score > 0.25:
+            parkinsons_risk = "moderate"
+            
         indicators["parkinsons"] = {
             "score": float(parkinsons_score),
             "risk": parkinsons_risk
         }
         
-        # Overall neurological risk
-        overall_score = max(bells_palsy_score, stroke_score, parkinsons_score)
-        overall_risk = "low"
+        # Overall neurological risk - properly calculated from individual risks
+        # Use a weighted approach that doesn't override individual assessments
+        risk_scores = [
+            bells_palsy_score,
+            stroke_score,
+            parkinsons_score
+        ]
         
+        # Get the maximum risk score
+        overall_score = max(risk_scores)
+        
+        # Get risk level from score
+        overall_risk = "low"
         if overall_score > 0.4:
             overall_risk = "high"
         elif overall_score > 0.25:
             overall_risk = "moderate"
             
+        # Cross-check with individual risks - require at least one matching risk level
+        if overall_risk == "high" and not any(ind["risk"] == "high" for ind in [indicators["bells_palsy"], indicators["stroke"], indicators["parkinsons"]]):
+            # Downgrade if no individual high risks
+            overall_risk = "moderate"
+        
         indicators["overall"] = {
             "score": float(overall_score),
             "risk": overall_risk

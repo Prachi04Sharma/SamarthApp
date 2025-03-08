@@ -1,21 +1,23 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import CssBaseline from '@mui/material/CssBaseline';
-import { AuthProvider } from './contexts/AuthContext';
-import ThemeProvider from './contexts/ThemeContext';
+import { SnackbarProvider } from 'notistack';
 
-// Auth Components
-import PrivateRoute from './components/auth/PrivateRoute';
+// Auth components
 import Login from './components/auth/Login';
-import Signup from './components/auth/Signup';
-import ProtectedRoute from './components/auth/ProtectedRoute';
+import Register from './components/auth/Signup';
 
-// Pages
-import Settings from './pages/Settings';
-import Analytics from './pages/Analytics';
+// Pages and components
+import Dashboard from './components/Dashboard';
 import Profile from './pages/Profile';
-import Camera from './pages/Camera';
 import Assessment from './pages/Assessment';
+import Analytics from './pages/Analytics';
+import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
+
+import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import Diagnostics from './pages/Diagnostics';
+import ProtectedRoute from './components/routing/ProtectedRoute';
 import Dashboard from './components/Dashboard';
 import Therapies from './pages/Therapies';
 import ParkinsonsTherapy from './pages/therapies/ParkinsonsTherapy';
@@ -50,6 +52,22 @@ function App() {
     <ThemeProvider>
       <CssBaseline />
       <AuthProvider>
+
+        <SnackbarProvider maxSnack={3}>
+          <Router>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/assessment/*" element={<ProtectedRoute><Assessment /></ProtectedRoute>} />
+              <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/diagnostics" element={<ProtectedRoute><Diagnostics /></ProtectedRoute>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Router>
+        </SnackbarProvider>
         <Router>
           <Routes>
             {/* Public Routes */}

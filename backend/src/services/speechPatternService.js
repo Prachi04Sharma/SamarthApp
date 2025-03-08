@@ -6,89 +6,49 @@ export const speechPatternService = {
       if (!assessmentData.userId || !assessmentData.metrics) {
         throw new Error('Missing required fields');
       }
-
+      
+      // Handle nested metrics structure - if metrics contains another metrics object, use that
+      const metricsData = assessmentData.metrics.metrics || assessmentData.metrics;
+      
       // Ensure we have all required metric fields with defaults if missing
       const metrics = {
         clarity: {
-          score: ensureNumber(assessmentData.metrics.clarity?.score || assessmentData.metrics.clarity),
-          pronunciation: ensureNumber(assessmentData.metrics.clarity?.pronunciation || 0),
-          articulation: ensureNumber(assessmentData.metrics.clarity?.articulation || 0)
+          score: ensureNumber(metricsData.clarity?.score || metricsData.clarity)
         },
-        fluency: {
-          speechRate: ensureNumber(assessmentData.metrics.speechRate || assessmentData.metrics.fluency?.speechRate),
-          wordCount: ensureNumber(assessmentData.metrics.wordCount || assessmentData.metrics.fluency?.wordCount || 0),
-          syllableCount: ensureNumber(assessmentData.metrics.syllableCount || assessmentData.metrics.fluency?.syllableCount || 0),
-          pauseCount: ensureNumber(assessmentData.metrics.pauseCount || assessmentData.metrics.fluency?.pauseCount || 0),
-          pauseDuration: ensureNumber(assessmentData.metrics.pauseDuration || assessmentData.metrics.fluency?.pauseDuration || 0),
-          fillerWordCount: ensureNumber(assessmentData.metrics.fillerWordCount || assessmentData.metrics.fluency?.fillerWordCount || 0)
+        speechRate: {
+          wordsPerMinute: ensureNumber(metricsData.speechRate?.wordsPerMinute || metricsData.speechRate)
         },
-        volume: {
-          mean: ensureNumber(assessmentData.metrics.volume?.mean || 0),
-          variability: ensureNumber(assessmentData.metrics.volume?.variability || 0),
-          control: ensureNumber(assessmentData.metrics.volumeControl || assessmentData.metrics.volume?.control || 0)
-        },
-        prosody: {
-          pitchVariability: ensureNumber(assessmentData.metrics.pitchVariation || assessmentData.metrics.prosody?.pitchVariability || 0),
-          intonation: ensureNumber(assessmentData.metrics.prosody?.intonation || 0),
-          rhythm: ensureNumber(assessmentData.metrics.prosody?.rhythm || 0),
-          stress: ensureNumber(assessmentData.metrics.prosody?.stress || 0)
-        },
-        cognition: {
-          hesitations: ensureNumber(assessmentData.metrics.emotionalMarkers?.hesitation || assessmentData.metrics.cognition?.hesitations || 0),
-          repetitions: ensureNumber(assessmentData.metrics.cognition?.repetitions || 0),
-          revisions: ensureNumber(assessmentData.metrics.cognition?.revisions || 0),
-          stutter: {
-            count: ensureNumber(assessmentData.metrics.stuttering || assessmentData.metrics.cognition?.stutter?.count || 0),
-            severity: ensureNumber(assessmentData.metrics.cognition?.stutter?.severity || 0)
-          }
+        volumeControl: {
+          score: ensureNumber(metricsData.volumeControl?.score || metricsData.volumeControl)
         },
         emotion: {
-          confidence: ensureNumber(assessmentData.metrics.emotionalMarkers?.confidence || assessmentData.metrics.emotion?.confidence || 0),
-          stress: ensureNumber(assessmentData.metrics.emotionalMarkers?.stress || assessmentData.metrics.emotion?.stress || 0),
-          flatness: ensureNumber(assessmentData.metrics.emotion?.flatness || 0)
+          confidence: ensureNumber(metricsData.emotion?.confidence || 0),
+          hesitation: ensureNumber(metricsData.emotion?.hesitation || 0),
+          stress: ensureNumber(metricsData.emotion?.stress || 0),
+          monotony: ensureNumber(metricsData.emotion?.monotony || 0)
         },
-        duration: ensureNumber(assessmentData.metrics.duration),
-        transcript: assessmentData.transcript || assessmentData.metrics.transcript || '',
+        overallScore: ensureNumber(metricsData.overallScore),
+        // Include additional metrics data if available
+        articulation: metricsData.articulation || {
+          precision: 0,
+          vowel_formation: 0,
+          consonant_precision: 0,
+          slurred_speech: 0
+        },
+        fluency: metricsData.fluency || {
+          fluency_score: 0,
+          words_per_minute: ensureNumber(metricsData.speechRate?.wordsPerMinute || 0),
+          pause_rate: 0
+        },
+        pitch_stability: ensureNumber(metricsData.pitch_stability || 0)
       };
 
-      // Calculate overall metrics if not provided
-      metrics.overall = {
-        intelligibilityScore: ensureNumber(assessmentData.metrics.overall?.intelligibilityScore || 
-          calculateIntelligibilityScore(metrics)),
-        naturalness: ensureNumber(assessmentData.metrics.overall?.naturalness || 
-          calculateNaturalnessScore(metrics)),
-        communicationEfficiency: ensureNumber(assessmentData.metrics.overall?.communicationEfficiency || 
-          calculateCommunicationEfficiencyScore(metrics)),
-        compositeScore: ensureNumber(assessmentData.metrics.overallScore || assessmentData.metrics.overall?.compositeScore || 
-          calculateCompositeScore(metrics))
-      };
-
-      // Include raw data if available
-      if (assessmentData.metrics.rawData) {
-        metrics.rawData = {
-          waveform: Array.isArray(assessmentData.metrics.rawData.waveform) ? 
-            assessmentData.metrics.rawData.waveform : [],
-          pitchData: Array.isArray(assessmentData.metrics.rawData.pitchData) ? 
-            assessmentData.metrics.rawData.pitchData : [],
-          volumeData: Array.isArray(assessmentData.metrics.rawData.volumeData) ? 
-            assessmentData.metrics.rawData.volumeData : [],
-          timestamps: Array.isArray(assessmentData.metrics.rawData.timestamps) ? 
-            assessmentData.metrics.rawData.timestamps : [],
-          emotionalMarkers: {
-            confidencePoints: Array.isArray(assessmentData.metrics.rawData.emotionalMarkers?.confidencePoints) ? 
-              assessmentData.metrics.rawData.emotionalMarkers.confidencePoints : [],
-            stressPoints: Array.isArray(assessmentData.metrics.rawData.emotionalMarkers?.stressPoints) ? 
-              assessmentData.metrics.rawData.emotionalMarkers.stressPoints : [],
-            hesitationPoints: Array.isArray(assessmentData.metrics.rawData.emotionalMarkers?.hesitationPoints) ? 
-              assessmentData.metrics.rawData.emotionalMarkers.hesitationPoints : []
-          }
-        };
-      }
-
+      // Create the assessment object with the processed metrics
       const assessment = new SpeechPatternAssessment({
         userId: assessmentData.userId,
-        timestamp: assessmentData.timestamp || new Date(),
+        timestamp: metricsData.timestamp || assessmentData.timestamp || new Date(),
         type: assessmentData.type || 'speechPattern',
+        status: assessmentData.status || 'COMPLETED',
         metrics
       });
 

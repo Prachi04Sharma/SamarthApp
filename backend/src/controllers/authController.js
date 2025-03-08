@@ -157,3 +157,55 @@ export const getCurrentUser = async (req, res) => {
     });
   }
 };
+
+// Update user profile
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, email, profile } = req.body;
+    
+    // Get user ID from the authenticated request
+    const userId = req.user._id;
+    
+    // Find and update the user
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update fields if provided
+    if (name) user.name = name;
+    if (email) user.email = email;
+    
+    // Update profile fields if provided
+    if (profile) {
+      user.profile = {
+        ...user.profile,
+        ...profile
+      };
+    }
+    
+    // Save the updated user
+    await user.save();
+    
+    // Return updated user info
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        profile: user.profile
+      }
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating profile'
+    });
+  }
+};

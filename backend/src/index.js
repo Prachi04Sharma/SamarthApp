@@ -3,9 +3,11 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import userRoutes from './routes/user.js';
-import assessmentRoutes from './routes/assessment.js';
-import specializedAssessmentRoutes from './routes/specialized-assessments.js'; // Already imported
+import assessmentRoutes from './routes/assessmentRoutes.js'; // Fix import path if needed
+import specializedAssessmentRoutes from './routes/specialized-assessments.js';
 import authRoutes from './routes/auth.js';
+import diagnosticRoutes from './routes/diagnosticRoutes.js';
+import { requestLogger } from './middleware/requestLogger.js';
 
 // Initialize environment variables
 dotenv.config();
@@ -17,6 +19,10 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true
 }));
+
+// Add request logger middleware
+app.use(requestLogger);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -24,10 +30,12 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/assessments', assessmentRoutes);
-app.use('/api/specialized-assessments', specializedAssessmentRoutes); // Already added
+app.use('/api/specialized-assessments', specializedAssessmentRoutes);
+app.use('/api', diagnosticRoutes); // Add diagnostic routes
 
 // Add error handling for 404
 app.use((req, res, next) => {
+  console.log(`404 Not Found: ${req.method} ${req.url}`);
   res.status(404).json({
     success: false,
     error: `Route not found: ${req.method} ${req.url}`

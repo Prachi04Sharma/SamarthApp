@@ -56,6 +56,7 @@ export const AuthProvider = ({ children }) => {
       
       if (response.token && response.user) {
         localStorage.setItem('token', response.token);
+        localStorage.setItem('userId', response.user.id); // Store user ID in localStorage
         setUser(response.user);
         setLoading(false);  // Set loading false on success
         return response.user;
@@ -101,7 +102,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    setStoredToken(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('userId'); // Also remove userId on logout
     setUser(null);
     setError(null);
   };

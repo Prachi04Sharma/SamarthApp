@@ -1,21 +1,63 @@
 import Assessment from '../models/Assessment.js';
+import TremorAssessment from '../models/TremorAssessment.js';
+import SpeechPatternAssessment from '../models/SpeechPatternAssessment.js';
+import ResponseTimeAssessment from '../models/ResponseTimeAssessment.js';
+import NeckMobilityAssessment from '../models/NeckMobilityAssessment.js';
+import GaitAnalysisAssessment from '../models/GaitAnalysisAssessment.js';
+import FingerTappingAssessment from '../models/FingerTappingAssessment.js';
+import FacialSymmetryAssessment from '../models/FacialSymmetryAssessment.js';
+import EyeMovementAssessment from '../models/EyeMovementAssessment.js';
+import { generateReport } from '../services/reportService.js';
+import { getAiPrediction } from '../services/aiService.js';
+import mongoose from 'mongoose';
+import pdf from 'pdfkit';
+import fs from 'fs';
+import path from 'path';
+import { getAiAnalysisResults } from '../services/aiService.js';
 
 export const getBaselineData = async (req, res) => {
   try {
-    const { type } = req.query;
+    const { type, userId } = req.query;
+    
+    console.log('Getting baseline data:', { type, userId, authenticatedUser: req.user._id });
+    
     if (!type) {
       return res.status(400).json({ message: 'Assessment type is required' });
+    }
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    // Check if the requested userId matches the authenticated user or if user is admin
+    // Update this check to be more permissive during development
+    const isAuthorized = 
+      req.user._id.toString() === userId || 
+      req.user.role === 'admin' ||
+      process.env.NODE_ENV === 'development';
+    
+    if (!isAuthorized) {
+      console.log('Unauthorized baseline data access attempt:', {
+        requestedId: userId,
+        authenticatedId: req.user._id.toString()
+      });
+      return res.status(403).json({ message: 'You can only access your own assessments' });
     }
 
     // Find the most recent assessment of this type for the user
     const baseline = await Assessment.findOne({
-      user: req.user.userId,
+      userId,
       type,
       status: 'COMPLETED'
-    }).sort({ createdAt: -1 });
+    }).sort({ timestamp: -1 });
 
     if (!baseline) {
-      return res.json({ message: 'No baseline data found', data: null });
+      console.log('No baseline data found for', { type, userId });
+      // Return 200 with null data instead of 404 to avoid error
+      return res.status(200).json({ 
+        message: 'No baseline data found', 
+        data: null 
+      });
     }
 
     res.json({
@@ -92,14 +134,118 @@ export const saveAssessment = async (req, res) => {
 export const getAssessmentHistory = async (req, res) => {
   try {
     const { userId, type, limit = 10 } = req.query;
+    
+    console.log('Getting assessment history:', { userId, type, limit });
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId parameter is required'
+      });
+    }
 
     const query = { userId };
     if (type) query.type = type;
 
-    const assessments = await Assessment.find(query)
+    // Log the exact query we're using
+    console.log('Assessment query:', JSON.stringify(query));
+    
+    // Find documents and log the exact collection name being used
+    console.log('Querying Assessment collection...');
+    const collectionStats = await mongoose.connection.db.collection('assessments').stats();
+    console.log('Assessment collection stats:', { 
+      documentCount: collectionStats.count, 
+      avgObjectSize: collectionStats.avgObjSize 
+    });
+
+    // Find assessments in Assessment model
+    let assessments = await Assessment.find(query)
       .sort({ timestamp: -1 })
       .limit(parseInt(limit))
       .lean();
+      
+    console.log(`Found ${assessments.length} assessments for user ${userId}`);
+    
+    // Check both string and ObjectId versions of userId
+    if (assessments.length === 0) {
+      console.log('Trying alternative query formats...');
+      try {
+        // Try with ObjectId
+        if (mongoose.Types.ObjectId.isValid(userId)) {
+          console.log('Trying with ObjectId userId');
+          const objectIdQuery = { userId: new mongoose.Types.ObjectId(userId) };
+          assessments = await Assessment.find(objectIdQuery)
+            .sort({ timestamp: -1 })
+            .limit(parseInt(limit))
+            .lean();
+          console.log(`Found ${assessments.length} assessments with ObjectId query`);
+        }
+      } catch (err) {
+        console.error('Error with alternative query:', err);
+      }
+    }
+    
+    // If we don't find any in the generic model, try the specific models
+    if (assessments.length === 0) {
+      console.log('No assessments found in general collection, checking specific collections...');
+      const modelMap = {
+        'tremor': TremorAssessment,
+        'speechPattern': SpeechPatternAssessment,
+        'responseTime': ResponseTimeAssessment,
+        'neckMobility': NeckMobilityAssessment,
+        'gaitAnalysis': GaitAnalysisAssessment,
+        'fingerTapping': FingerTappingAssessment,
+        'facialSymmetry': FacialSymmetryAssessment,
+        'eyeMovement': EyeMovementAssessment
+      };
+      
+      // If type is specified, only check that model
+      if (type && modelMap[type]) {
+        console.log(`Checking ${type} collection...`);
+        assessments = await modelMap[type].find({ userId })
+          .sort({ timestamp: -1 })
+          .limit(parseInt(limit))
+          .lean();
+        console.log(`Found ${assessments.length} ${type} assessments`);
+      } 
+      // Otherwise check all models
+      else if (!type) {
+        console.log('Checking all specialized collections...');
+        const promises = [];
+        
+        // Collect all promises
+        for (const [modelType, Model] of Object.entries(modelMap)) {
+          promises.push(
+            Model.find({ userId })
+              .sort({ timestamp: -1 })
+              .limit(parseInt(limit))
+              .lean()
+              .then(results => {
+                console.log(`Found ${results.length} ${modelType} assessments`);
+                // Add type field if it doesn't exist
+                return results.map(r => ({...r, type: modelType}));
+              })
+          );
+        }
+        
+        // Wait for all queries to complete
+        const results = await Promise.all(promises);
+        
+        // Combine results, flatten array, and sort by timestamp
+        assessments = results
+          .flat()
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          .slice(0, limit);
+          
+        console.log(`Found ${assessments.length} total assessments across all collections`);
+      }
+    }
+    
+    // For debugging - if no real data found, return an empty array instead of mock data
+    if (assessments.length === 0) {
+      console.log('No assessments found, returning empty array');
+      assessments = [];
+    }
 
     res.json({
       success: true,
@@ -109,6 +255,7 @@ export const getAssessmentHistory = async (req, res) => {
     console.error('Error getting assessment history:', error);
     res.status(500).json({
       success: false,
+      message: 'Failed to fetch assessment history',
       error: error.message
     });
   }
@@ -130,5 +277,452 @@ export const deleteAssessment = async (req, res) => {
   } catch (error) {
     console.error('Delete assessment error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Get all assessments for a user
+export const getAllAssessments = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Ensure we have a userId to query with
+    if (!userId) {
+      return res.status(400).json({ 
+        message: 'User ID parameter is required',
+        success: false
+      });
+    }
+    
+    // Check authorization with safer comparison and more permissive dev environment check
+    const requestedUserId = userId.toString();
+    const authenticatedUserId = req.user?._id?.toString();
+    const isDevEnv = process.env.NODE_ENV === 'development';
+    const isAuthorized = isDevEnv || requestedUserId === authenticatedUserId || req.user?.role === 'admin';
+    
+    if (!isAuthorized) {
+      console.log('User ID mismatch:', { requestedId: requestedUserId, authenticatedId: authenticatedUserId });
+      return res.status(403).json({ message: 'You can only access your own assessments' });
+    }
+    
+    console.log('Fetching assessments for user:', userId);
+    
+    // First try the main Assessment collection
+    let assessments = await Assessment.find({ userId }).sort({ timestamp: -1 }).lean();
+    console.log(`Found ${assessments.length} assessments in main collection for user ${userId}`);
+    
+    // If no assessments found, try specialized collections
+    if (assessments.length === 0) {
+      console.log('No assessments found in main collection, checking specialized collections...');
+      
+      const modelMap = {
+        'tremor': TremorAssessment,
+        'speechPattern': SpeechPatternAssessment,
+        'responseTime': ResponseTimeAssessment,
+        'neckMobility': NeckMobilityAssessment,
+        'gaitAnalysis': GaitAnalysisAssessment,
+        'fingerTapping': FingerTappingAssessment,
+        'facialSymmetry': FacialSymmetryAssessment,
+        'eyeMovement': EyeMovementAssessment
+      };
+      
+      // Query all specialized collections
+      const promises = Object.entries(modelMap).map(async ([type, Model]) => {
+        const results = await Model.find({ userId }).sort({ timestamp: -1 }).lean();
+        // Add type if missing
+        return results.map(result => ({
+          ...result,
+          type: result.type || type
+        }));
+      });
+      
+      // Wait for all queries to complete
+      const specializedResults = await Promise.all(promises);
+      
+      // Combine and flatten results
+      assessments = specializedResults.flat();
+      
+      console.log(`Found ${assessments.length} total assessments in specialized collections`);
+    }
+    
+    // Format the response with consistent success field
+    res.status(200).json({
+      success: true,
+      data: assessments
+    });
+  } catch (error) {
+    console.error('Failed to fetch assessments:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch assessments', 
+      error: error.message 
+    });
+  }
+};
+
+// Get assessments by type for a user
+export const getAssessmentsByType = async (req, res) => {
+  try {
+    const { userId, type } = req.params;
+    const modelMap = {
+      tremor: TremorAssessment,
+      speechPattern: SpeechPatternAssessment,
+      responseTime: ResponseTimeAssessment,
+      neckMobility: NeckMobilityAssessment,
+      gaitAnalysis: GaitAnalysisAssessment,
+      fingerTapping: FingerTappingAssessment,
+      facialSymmetry: FacialSymmetryAssessment,
+      eyeMovement: EyeMovementAssessment
+    };
+    const AssessmentModel = modelMap[type];
+    if (!AssessmentModel) {
+      return res.status(400).json({ message: 'Invalid assessment type' });
+    }
+    const assessments = await AssessmentModel.find({ userId });
+    res.status(200).json(assessments);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch assessments by type', error });
+  }
+};
+
+// Generate PDF report
+export const generatePdfReport = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { assessmentTypes } = req.query; // optional query param to filter by assessment types
+    
+    console.log('PDF Report request received:', {
+      userId,
+      assessmentTypes,
+      url: req.url,
+      method: req.method,
+      path: req.path
+    });
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    // Parse assessment types if provided and validate them
+    let typesArray = null;
+    try {
+      if (assessmentTypes) {
+        console.log('Assessment types provided:', assessmentTypes);
+        typesArray = assessmentTypes.split(',').filter(type => type.trim() !== '');
+        console.log('Parsed types array:', typesArray);
+      }
+    } catch (err) {
+      console.error('Error parsing assessment types:', err);
+      typesArray = null;
+    }
+    
+    // Initialize assessmentData as an empty object
+    let assessmentData = {};
+    
+    try {
+      // Get assessments from database based on type filter
+      if (typesArray && Array.isArray(typesArray) && typesArray.length > 0) {
+        console.log('Fetching specific assessment types:', typesArray);
+        
+        // Create an array of promises to fetch data for each type
+        const fetchPromises = typesArray.map(async (type) => {
+          try {
+            // Try to normalize the type name to match database
+            const normalizedType = type.trim().toUpperCase();
+            console.log(`Fetching assessments of type: ${normalizedType}`);
+            
+            // Query the database for this specific type
+            const typeData = await Assessment.find({ 
+              userId, 
+              type: normalizedType,
+              status: 'COMPLETED'
+            }).sort({ timestamp: -1 }).limit(3).lean();
+            
+            console.log(`Found ${typeData.length} assessments for type ${normalizedType}`);
+            
+            // If we found data, add it to the results
+            if (typeData && typeData.length > 0) {
+              assessmentData[normalizedType] = typeData;
+            }
+            
+            return { type: normalizedType, data: typeData };
+          } catch (err) {
+            console.error(`Error fetching data for type ${type}:`, err);
+            return { type, error: err.message };
+          }
+        });
+        
+        // Wait for all queries to complete
+        const results = await Promise.all(fetchPromises);
+        console.log('Assessment fetch results:', results.map(r => `${r.type}: ${r.data?.length || 0} records`));
+      } else {
+        console.log('No specific types requested, fetching all assessment types');
+        
+        // If no specific types are requested, fetch all assessments
+        const allAssessments = await Assessment.find({ 
+          userId,
+          status: 'COMPLETED'
+        }).sort({ timestamp: -1 }).lean();
+        
+        console.log(`Found ${allAssessments.length} total assessments`);
+        
+        // Group by type
+        if (Array.isArray(allAssessments)) {
+          allAssessments.forEach(assessment => {
+            if (assessment && assessment.type) {
+              if (!assessmentData[assessment.type]) {
+                assessmentData[assessment.type] = [];
+              }
+              assessmentData[assessment.type].push(assessment);
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching assessments:', err);
+      // Ensure assessmentData is still an object
+      assessmentData = {};
+    }
+    
+    // Make absolutely sure assessmentData is an object
+    if (typeof assessmentData !== 'object' || assessmentData === null) {
+      console.log('assessmentData is not an object, resetting to empty object');
+      assessmentData = {};
+    }
+    
+    // Now check if we have any assessment types (safe to call Object.keys now)
+    console.log('Assessment data type:', typeof assessmentData);
+    console.log('Assessment data is null?', assessmentData === null);
+    
+    // This should now be safe
+    let typeKeys = [];
+    try {
+      typeKeys = Object.keys(assessmentData);
+      console.log('Found assessment types:', typeKeys);
+    } catch (err) {
+      console.error('Error getting assessment type keys:', err);
+      typeKeys = [];
+    }
+    
+    if (typeKeys.length === 0) {
+      console.log('No assessment data found');
+      // Return a 404 response
+      return res.status(404).json({ 
+        message: 'No assessment data found for this user',
+        error: 'No data available to generate report'
+      });
+    }
+    
+    // Generate the PDF
+    try {
+      const pdfBuffer = await generateReport({
+        userId,
+        assessmentData
+      });
+      
+      console.log('PDF generated successfully, sending response');
+      
+      // Send PDF as response
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="assessment-report-${userId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      return res.status(500).json({ 
+        message: 'Failed to generate PDF report',
+        error: err.message
+      });
+    }
+  } catch (error) {
+    console.error('Error in generatePdfReport:', error);
+    res.status(500).json({ message: 'Error generating PDF report', error: error.message });
+  }
+};
+
+// Get AI analysis
+export const getAiAnalysis = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    console.log(`Processing AI analysis request for user ID: ${userId}`);
+    
+    if (!userId) {
+      return res.status(400).json({ 
+        message: 'User ID is required for AI analysis'
+      });
+    }
+    
+    // First check the main Assessment collection
+    console.log('Fetching assessments from main collection');
+    const assessments = await Assessment.find({ 
+      userId: userId,
+      status: 'COMPLETED'
+    }).sort({ timestamp: -1 }).lean();
+    
+    console.log(`Found ${assessments.length} assessments in main collection`);
+    
+    // Collect assessments from specialized collections if needed
+    if (assessments.length < 5) { // If we don't have enough data in the main collection
+      console.log('Fetching additional assessments from specialized collections');
+      
+      // Define model map for ALL specialized collections
+      const modelMap = {
+        'TREMOR': TremorAssessment,
+        'SPEECH_PATTERN': SpeechPatternAssessment,
+        'RESPONSE_TIME': ResponseTimeAssessment,
+        'FACIAL_SYMMETRY': FacialSymmetryAssessment,
+        'FINGER_TAPPING': FingerTappingAssessment,
+        'EYE_MOVEMENT': EyeMovementAssessment,
+        'GAIT_ANALYSIS': GaitAnalysisAssessment,
+        'NECK_MOBILITY': NeckMobilityAssessment
+      };
+      
+      // Collect all promises for fetching from specialized collections
+      const fetchPromises = Object.entries(modelMap).map(async ([type, Model]) => {
+        const data = await Model.find({ 
+          userId: userId,
+          status: 'COMPLETED'
+        }).sort({ timestamp: -1 }).lean();
+        
+        // Make sure type is included in each record
+        return data.map(record => ({
+          ...record,
+          type: type
+        }));
+      });
+      
+      // Wait for all queries to complete
+      const specializedResults = await Promise.all(fetchPromises);
+      
+      // Combine results from specialized collections
+      const additionalAssessments = specializedResults.flat();
+      console.log(`Found ${additionalAssessments.length} assessments in specialized collections`);
+      
+      // Combine with main collection assessments, avoiding duplicates by ID
+      const existingIds = new Set(assessments.map(a => a._id.toString()));
+      const uniqueAdditional = additionalAssessments.filter(a => !existingIds.has(a._id.toString()));
+      
+      // Combine all assessments
+      const allAssessments = [...assessments, ...uniqueAdditional];
+      console.log(`Combined total: ${allAssessments.length} assessments`);
+      
+      if (allAssessments.length === 0) {
+        return res.status(404).json({
+          message: 'No assessment data found for this user',
+          error: 'No data available for AI analysis'
+        });
+      }
+      
+      // Debug log the assessment types we found
+      const typesFound = {};
+      allAssessments.forEach(a => {
+        typesFound[a.type] = (typesFound[a.type] || 0) + 1;
+      });
+      console.log('Assessment types found:', typesFound);
+      
+      // Get AI analysis from the service
+      console.log('Sending assessments to AI analysis service');
+      const aiResults = await getAiAnalysisResults(allAssessments);
+      
+      console.log('AI analysis completed successfully');
+      return res.status(200).json(aiResults);
+    } else {
+      // If we have enough data in the main collection
+      if (assessments.length === 0) {
+        return res.status(404).json({
+          message: 'No assessment data found for this user',
+          error: 'No data available for AI analysis'
+        });
+      }
+      
+      console.log('Using assessments from main collection for AI analysis');
+      const aiResults = await getAiAnalysisResults(assessments);
+      
+      console.log('AI analysis completed successfully');
+      return res.status(200).json(aiResults);
+    }
+  } catch (error) {
+    console.error('Failed to perform AI analysis:', error);
+    res.status(500).json({ 
+      message: 'Failed to perform AI analysis', 
+      error: error.message 
+    });
+  }
+};
+
+// Add a new assessment
+export const addAssessment = async (req, res) => {
+  try {
+    const { type, userId } = req.body;
+    
+    if (!type) {
+      return res.status(400).json({ message: 'Assessment type is required' });
+    }
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    // For development/test purposes only: Allow creating assessments for any user
+    // In production, we'd want to ensure the user can only create assessments for themselves
+    const isDevEnv = process.env.NODE_ENV === 'development';
+    const isAuthorized = isDevEnv || userId === req.user._id.toString();
+    
+    if (!isAuthorized) {
+      return res.status(403).json({ message: 'You can only create assessments for your own user account' });
+    }
+    
+    console.log(`Creating new ${type} assessment for user ${userId}`);
+    
+    let assessment;
+    const assessmentData = {
+      ...req.body,
+      status: 'COMPLETED',
+      timestamp: req.body.timestamp || new Date()
+    };
+    
+    switch (type) {
+      case 'tremor':
+        assessment = new TremorAssessment(assessmentData);
+        break;
+      case 'speechPattern':
+        assessment = new SpeechPatternAssessment(assessmentData);
+        break;
+      case 'responseTime':
+        assessment = new ResponseTimeAssessment(assessmentData);
+        break;
+      case 'neckMobility':
+        assessment = new NeckMobilityAssessment(assessmentData);
+        break;
+      case 'gaitAnalysis':
+        assessment = new GaitAnalysisAssessment(assessmentData);
+        break;
+      case 'fingerTapping':
+        assessment = new FingerTappingAssessment(assessmentData);
+        break;
+      case 'facialSymmetry':
+        assessment = new FacialSymmetryAssessment(assessmentData);
+        break;
+      case 'eyeMovement':
+        assessment = new EyeMovementAssessment(assessmentData);
+        break;
+      default:
+        // Also add to the generic Assessment model
+        assessment = new Assessment({
+          userId,
+          type,
+          data: req.body.metrics || {},
+          metrics: req.body.metrics || {},
+          status: 'COMPLETED',
+          timestamp: req.body.timestamp || new Date()
+        });
+        break;
+    }
+    
+    const savedAssessment = await assessment.save();
+    console.log(`Successfully created ${type} assessment with ID: ${savedAssessment._id}`);
+    
+    res.status(201).json(savedAssessment);
+  } catch (error) {
+    console.error('Error adding assessment:', error);
+    res.status(500).json({ message: 'Error adding assessment', error: error.message });
   }
 };

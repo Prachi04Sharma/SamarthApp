@@ -107,23 +107,32 @@ speechPatternSchema.pre('save', function(next) {
   if (!this.metrics) {
     this.metrics = {};
   }
-  if (!this.metrics.clarity) {
-    this.metrics.clarity = { score: 0 };
-  }
-  if (!this.metrics.speechRate) {
-    this.metrics.speechRate = { wordsPerMinute: 0 };
-  }
-  if (!this.metrics.volumeControl) {
-    this.metrics.volumeControl = { score: 0 };
-  }
-  if (!this.metrics.emotion) {
-    this.metrics.emotion = {
-      confidence: 0,
-      hesitation: 0,
-      stress: 0,
-      monotony: 0
-    };
-  }
+  // Set default values for metrics if they're missing
+  this.metrics.clarity = this.metrics.clarity || { score: 0 };
+  this.metrics.speechRate = this.metrics.speechRate || { wordsPerMinute: 0 };
+  this.metrics.volumeControl = this.metrics.volumeControl || { score: 0 };
+  this.metrics.emotion = this.metrics.emotion || {
+    confidence: 0,
+    hesitation: 0,
+    stress: 0,
+    monotony: 0
+  };
+  this.metrics.overallScore = this.metrics.overallScore || 0;
+  
+  // Set nested optional fields
+  this.metrics.articulation = this.metrics.articulation || {
+    precision: 0,
+    vowel_formation: 0,
+    consonant_precision: 0,
+    slurred_speech: 0
+  };
+  this.metrics.fluency = this.metrics.fluency || {
+    fluency_score: 0,
+    words_per_minute: 0,
+    pause_rate: 0
+  };
+  this.metrics.pitch_stability = this.metrics.pitch_stability || 0;
+  
   next();
 });
 
