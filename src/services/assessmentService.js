@@ -1,4 +1,11 @@
 import api, { assessment } from './api';
+import axios from 'axios';
+
+// For React apps using Create React App, environment variables must be prefixed with REACT_APP_
+// Access them through window.env or import.meta.env (for Vite) instead of process.env
+const API_BASE_URL = import.meta.env?.REACT_APP_API_URL || 
+                    window.env?.REACT_APP_API_URL || 
+                    'http://localhost:5000/api';
 
 // Assessment types
 export const ASSESSMENT_TYPES = {
@@ -19,6 +26,15 @@ export const assessmentTypes = {
   FACIAL_SYMMETRY: ASSESSMENT_TYPES.FACIAL_SYMMETRY,
   NECK_MOBILITY: ASSESSMENT_TYPES.NECK_MOBILITY,
   ...ASSESSMENT_TYPES
+};
+
+// Add a function to get auth headers with correct Authorization format
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return token ? { 
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  } : {};
 };
 
 // Assessment service implementation
@@ -317,4 +333,173 @@ const processJointAngles = (angles) => {
   return angles;
 };
 
-export default assessmentService; 
+export const fetchAllAssessments = async (userId) => {
+  try {
+    // The problem is in the endpoint URL - fixing it to match the backend route
+    const response = await api.get(`/assessments/history?userId=${userId}`);
+    return response.data.data || response.data;
+  } catch (error) {
+    console.error('Error fetching assessments:', error);
+    if (error.response?.status === 401) {
+      console.log('Authentication error: Please log in again');
+    }
+    throw error;
+  }
+};
+
+export const fetchAssessmentsByType = async (userId, type) => {
+  try {
+    // Update this route too to match the backend configuration
+    const response = await api.get(`/assessments/history`, { 
+      params: { userId, type }
+    });
+    return response.data.data || response.data;
+  } catch (error) {
+    console.error(`Error fetching ${type} assessments:`, error);
+    throw error;
+  }
+};
+
+export const generatePdfReport = async (userId, assessmentTypes = null) => {
+  try {
+    // Use the API instance directly from api.js which already handles auth
+    console.log('Generating PDF report for userId:', userId);
+    console.log('Selected assessment types:', assessmentTypes);
+    
+    // Create params with proper formatting for backend
+    const params = {};
+    if (assessmentTypes && assessmentTypes.length > 0) {
+      // Remove any spaces and make sure assessment types are properly formatted
+      // Using "assessmentTypes" parameter name as expected by the backend
+      params.assessmentTypes = assessmentTypes.join(',');
+    }
+    
+    console.log('Requesting PDF with params:', params);
+    
+    // Fix: Changed route to match the backend expectation - removed userId from path
+    // The backend might be expecting to get the userId from the authenticated token
+    const response = await api.get(`/assessments/report`, {
+      params,
+      responseType: 'blob',
+      timeout: 30000
+    });
+    
+    console.log('Response received, status:', response.status);
+    
+    // Create and trigger download
+    const pdfBlob = new Blob([response.data], { type: 'application/pdf' });
+    const downloadUrl = window.URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.setAttribute('download', `assessment-report-${userId}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    
+    // Remove the link after download starts
+    setTimeout(() => {
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    }, 100);
+    
+    return downloadUrl;
+  } catch (error) {
+    console.error('Error generating PDF report:', error);
+    console.error('Error response status:', error.response?.status);
+    
+    // Better error handling with user-friendly messages
+    if (error.response?.status === 404) {
+      // Check for specific error message from the server
+      if (error.response?.data instanceof Blob) {
+        try {
+          const errorText = await error.response.data.text();
+          console.error('Error response text:', errorText);
+          
+          // Try to parse the error JSON if possible
+          try {
+            const errorJson = JSON.parse(errorText);
+            if (errorJson.message === "No assessment data found for this user") {
+              throw new Error("No assessment data available. Please complete assessments before generating a report.");
+            }
+          } catch (jsonError) {
+            // If JSON parsing fails, just use the text
+          }
+        } catch (blobError) {
+          console.error('Failed to extract error text from blob', blobError);
+        }
+      }
+      
+      throw new Error("No assessment data found. Please complete some assessments first.");
+    } else if (error.response?.status === 401) {
+      throw new Error("Authentication error. Please log in again.");
+    } else {
+      throw error;
+    }
+  }
+};
+
+export const getAiAnalysis = async (userId) => {
+  try {
+    // Use the api instance from api.js
+    const response = await api.post(`/assessments/${userId}/ai-analysis`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting AI analysis:', error);
+    throw error;
+  }
+};
+
+export const fetchAiAnalysis = async (userId) => {
+  try {
+    // Use the api instance from api.js
+    const response = await api.post(`/assessments/${userId}/ai-analysis`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting AI analysis:', error);
+    throw error;
+  }
+};
+
+// Get baseline data for an assessment type
+export const getBaselineData = async (type, userId) => {
+  try {
+    if (!type) {
+      console.error('Assessment type is required');
+      return null;
+    }
+    
+    // Make sure we pass the current user's ID - use either from parameter or from storage
+    const currentUserId = userId || localStorage.getItem('userId');
+    
+    if (!currentUserId) {
+      console.warn('No user ID available for baseline data request');
+      return null;
+    }
+    
+    // Log what we're requesting
+    console.log('Requesting baseline data for:', { type, userId: currentUserId });
+    
+    // Create a local copy of the requested parameters to avoid modifying the original
+    const requestParams = { type, userId: currentUserId };
+    
+    try {
+      // Call the assessment API with properly specified parameters
+      const response = await assessment.getBaseline(type);
+      return response?.data || null;
+    } catch (error) {
+      // Enhance error logging, but don't propagate errors to components
+      if (error.response?.status === 400) {
+        console.error(`Bad request when fetching baseline data: ${error.response?.data?.message || error.message}`);
+      } else if (error.response?.status === 403) {
+        console.error(`Authentication error getting baseline data for ${type}. Please login again.`);
+      } else {
+        console.error(`Failed to get baseline data for ${type}:`, error);
+      }
+      return null;
+    }
+  } catch (error) {
+    console.error(`Unexpected error in getBaselineData for ${type}:`, error);
+    return null;
+  }
+};
+
+export default assessmentService;

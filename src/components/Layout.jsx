@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   AppBar, 
@@ -26,10 +26,25 @@ import {
   Analytics,
   Person,
   ExitToApp,
-  ChevronRight
+  ChevronRight,
+  BugReport as BugReportIcon
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+
+// Add avatar options - should be the same as in Profile.jsx
+// This could be moved to a shared config file in the future
+const avatarOptions = [
+  { id: 'default', url: '/avatars/default.png', name: 'Default' },
+  { id: 'avatar1', url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Felix', name: 'Robot 1' },
+  { id: 'avatar2', url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka', name: 'Robot 2' },
+  { id: 'avatar3', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Midnight', name: 'Person 1' },
+  { id: 'avatar4', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Luna', name: 'Person 2' },
+  { id: 'avatar5', url: 'https://api.dicebear.com/7.x/micah/svg?seed=Felix', name: 'Minimal 1' },
+  { id: 'avatar6', url: 'https://api.dicebear.com/7.x/micah/svg?seed=Coco', name: 'Minimal 2' },
+  { id: 'avatar7', url: 'https://api.dicebear.com/7.x/thumbs/svg?seed=Daisy', name: 'Thumb 1' },
+  { id: 'avatar8', url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Pepper', name: 'Portrait 1' }
+];
 
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
@@ -39,6 +54,31 @@ const Layout = ({ children }) => {
   // State for menus
   const [profileMenu, setProfileMenu] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [userAvatar, setUserAvatar] = useState('');
+
+  // New useEffect to fetch avatar from localStorage
+  useEffect(() => {
+    if (user?.id) {
+      // First check localStorage for avatar URL
+      const savedAvatarUrl = localStorage.getItem(`avatarUrl_${user.id}`);
+      
+      if (savedAvatarUrl) {
+        setUserAvatar(savedAvatarUrl);
+      } else {
+        // If no URL directly saved, check for avatar ID
+        const savedAvatarId = localStorage.getItem(`avatar_${user.id}`);
+        if (savedAvatarId) {
+          const avatarObj = avatarOptions.find(a => a.id === savedAvatarId);
+          setUserAvatar(avatarObj?.url || '');
+        } else {
+          // Fall back to user's profile pic if available
+          setUserAvatar(user?.profilePic || user?.profile?.avatarUrl || '');
+        }
+      }
+    } else {
+      setUserAvatar('');
+    }
+  }, [user]);
 
   const handleLogout = async () => {
     try {
@@ -55,6 +95,15 @@ const Layout = ({ children }) => {
     { text: 'Analytics', icon: <Analytics />, path: '/analytics' },
     { text: 'Settings', icon: <Settings />, path: '/settings' },
   ];
+
+  // Add diagnostics link only in development mode
+  if (import.meta.env.DEV) {
+    menuItems.push({
+      text: 'Diagnostics',
+      icon: <BugReportIcon />,
+      path: '/diagnostics'
+    });
+  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -118,7 +167,7 @@ const Layout = ({ children }) => {
                 border: '2px solid white'
               }}
               alt={user?.name || 'User'} 
-              src={user?.profilePic}
+              src={userAvatar || user?.profilePic}
             >
               {user?.name?.[0] || user?.email?.[0] || 'U'}
             </Avatar>
@@ -226,4 +275,4 @@ const Layout = ({ children }) => {
   );
 };
 
-export default Layout; 
+export default Layout;

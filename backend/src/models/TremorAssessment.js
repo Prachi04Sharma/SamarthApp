@@ -30,7 +30,7 @@ const tremorSchema = new mongoose.Schema({
     },
     tremor_type: {
       type: String,
-      enum: ['None', 'Very Slow', 'Resting', 'Postural', 'Action/Intention', 'Irregular'],
+      enum: ['None', 'Very Slow', 'Slow Tremor', 'Resting', 'Postural', 'Action/Intention', 'Irregular'],
       default: 'None'
     },
     severity: {

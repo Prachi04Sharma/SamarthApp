@@ -1,10 +1,31 @@
 import TremorAssessment from '../models/TremorAssessment.js';
 
+// Helper function to map tremor types from ML service to database enum values
+function mapTremorType(mlTremorType) {
+  // Map ML service tremor types to database enum values
+  const typeMapping = {
+    'None': 'None',
+    'Very Slow': 'Very Slow',
+    'Slow Tremor': 'Very Slow', // Map Slow Tremor to Very Slow
+    'Resting': 'Resting',
+    'Postural': 'Postural',
+    'Action/Intention': 'Action/Intention',
+    'Irregular': 'Irregular'
+  };
+
+  return typeMapping[mlTremorType] || 'None';
+}
+
 export const tremorService = {
   async saveAssessment(assessmentData) {
     try {
       if (!assessmentData.userId || !assessmentData.metrics) {
         throw new Error('Missing required fields');
+      }
+
+      // Map tremor type to valid enum value
+      if (assessmentData.metrics.tremor_type) {
+        assessmentData.metrics.tremor_type = mapTremorType(assessmentData.metrics.tremor_type);
       }
 
       // Calculate overall scores

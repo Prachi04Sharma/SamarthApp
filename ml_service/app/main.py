@@ -142,27 +142,74 @@ def save_video_to_temp(contents: bytes) -> str:
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to save video: {str(e)}")
 
+# Update the extract_frames function
+
 def extract_frames(video_path: str):
-    """Extract frames from video file."""
+    """Extract frames from video file with good density."""
     try:
         cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise HTTPException(status_code=422, detail="Could not open video file")
+            
         frames = []
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        
+        logger.info(f"Video properties: {frame_count} frames, {fps} FPS")
+        
+        # Calculate how many frames to sample to get approximately 10 fps
+        # This ensures we have enough frames for analysis without processing every frame
+        if frame_count > 0 and fps > 0:
+            # Aim for 10-15 fps for analysis (enough for tremor detection)
+            target_fps = min(15, fps)
+            step = max(1, round(fps / target_fps))
+            logger.info(f"Sampling every {step} frame(s) to get ~{fps/step:.1f} fps")
+        else:
+            step = 1
+        
+        frame_idx = 0
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-            frames.append(frame)
+                
+            # Only keep every nth frame
+            if frame_idx % step == 0:
+                frames.append(frame)
+                
+            frame_idx += 1
+            
+            # Limit to 300 frames max (10 seconds at 30fps) to prevent memory issues
+            if len(frames) >= 300:
+                logger.info(f"Reached frame limit (300), stopping extraction")
+                break
+                
         cap.release()
         
         if not frames:
-            raise ValueError("No frames extracted from video")
+            logger.warning("No frames extracted from video")
+            raise HTTPException(status_code=422, detail="No frames could be extracted from video")
             
+        logger.info(f"Successfully extracted {len(frames)} frames")
         return frames
+        
     except Exception as e:
+        logger.error(f"Error extracting frames: {str(e)}", exc_info=True)
+        # Clean up temp file
+        try:
+            if os.path.exists(video_path):
+                os.unlink(video_path)
+        except:
+            pass
         raise HTTPException(status_code=422, detail=f"Failed to extract frames: {str(e)}")
+    
     finally:
-        if os.path.exists(video_path):
-            os.unlink(video_path)
+        # Clean up temp file
+        try:
+            if os.path.exists(video_path):
+                os.unlink(video_path)
+        except:
+            pass
 
 @app.post("/analyze/eyes")
 async def analyze_eyes(file: UploadFile = File(...), phase: str = Form(...)):
@@ -225,69 +272,39 @@ async def analyze_eyes_options():
 
 @app.post("/analyze/tremor")
 async def analyze_tremor(file: UploadFile = File(...)):
-    logger.info("Starting tremor analysis request")
+    """Analyze tremor from video."""
     try:
-        # Save video temporarily
-        temp_path = "temp_tremor.webm"
-        with open(temp_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
+        # Save the uploaded video to a temporary file
+        temp_file = save_video_to_temp(await file.read())
+        logger.info(f"Video saved to temporary file: {temp_file}")
         
-        logger.info(f"Saved video file: {temp_path}")
+        # Extract frames from the video
+        frames = extract_frames(temp_file)
+        logger.info(f"Extracted {len(frames)} frames from video")
         
-        # Process video frames
-        cap = cv2.VideoCapture(temp_path)
-        tremor_analyzer = TremorAnalyzer()
-        positions = []
-        frame_count = 0
+        # Initialize the tremor analyzer
+        analyzer = TremorAnalyzer()
         
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+        # Process each frame to get hand positions
+        hand_positions = []
+        for frame in frames:
+            position = analyzer.process_frame(frame)
+            if position:
+                hand_positions.append(position)
                 
-            frame_count += 1
-            landmarks = tremor_analyzer.process_frame(frame)
-            if landmarks and landmarks[0]:
-                positions.append(landmarks[0]['index_tip'])
-                
-        cap.release()
-        os.remove(temp_path)
+        logger.info(f"Detected hand in {len(hand_positions)} frames")
         
-        logger.info(f"Processed {frame_count} frames, captured {len(positions)} hand positions")
-        
-        logger.info(f"Video info - Duration: {frame_count/30:.2f}s, Frames: {frame_count}")
-        logger.info(f"Hand detection rate: {len(positions)/frame_count*100:.1f}%")
-        
-        # Add position change logging
-        if positions:
-            dx = np.diff([p[0] for p in positions])
-            dy = np.diff([p[1] for p in positions])
-            avg_speed = np.mean(np.sqrt(dx**2 + dy**2))
-            logger.info(f"Average movement speed: {avg_speed:.2f} pixels/frame")
-        
-        if not positions:
-            logger.warning("No hand positions detected")
-            return {
-                "success": False,
-                "error": "No hand detected in video"
-            }
-            
-        # Analyze tremor
-        metrics = tremor_analyzer.analyze_tremor(positions)
+        # If we have enough frames with hand detections, analyze the tremor
+        metrics = analyzer.analyze_tremor(hand_positions)
         logger.info(f"Analysis complete. Metrics: {metrics}")
         
         return {
             "success": True,
             "metrics": metrics
         }
-        
     except Exception as e:
         logger.error(f"Error analyzing tremor: {str(e)}", exc_info=True)
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        raise HTTPException(status_code=500, detail=f"Failed to analyze tremor: {str(e)}")
 
 @app.post("/analyze/neck/set-neutral")
 async def set_neutral_position(frame: UploadFile = File(...)):

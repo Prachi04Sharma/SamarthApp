@@ -81,7 +81,7 @@ const Dashboard = () => {
         >
           <Box sx={{ position: 'relative', zIndex: 1 }}>
             <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold' }}>
-              Welcome back, {user?.name || user?.email?.split('@')[0] || 'User'}! 👋
+              Welcome back, {user?.firstName || user?.email?.split('@')[0] || 'User'}! 👋
             </Typography>
             <Typography variant="h6" sx={{ opacity: 0.9 }}>
               Your health journey dashboard

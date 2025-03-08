@@ -315,14 +315,14 @@ const floatTo16BitPCM = (view, offset, input) => {
       
       // Format metrics to match the expected schema structure
       const formattedMetrics = {
-        clarity: typeof metrics.clarity === 'number' 
-          ? { score: metrics.clarity * 100 } 
-          : metrics.clarity,
+        clarity: { 
+          score: metrics.clarity * 100 
+        },
         speechRate: {
           wordsPerMinute: metrics.speech_rate || 0
         },
         volumeControl: {
-          score: (metrics.volume_control || 0) * 100,
+          score: metrics.volume_control * 100
         },
         emotion: {
           confidence: metrics.emotion?.confidence || 0,
@@ -330,11 +330,21 @@ const floatTo16BitPCM = (view, offset, input) => {
           stress: metrics.emotion?.stress || 0,
           monotony: metrics.emotion?.monotony || 0
         },
-        // Add other metrics as needed
-        overallScore: metrics.overall_score || 
-        ((metrics.clarity * 100) + 
-         (metrics.volume_control * 100) + 
-         ((1 - metrics.emotion.hesitation) * 100)) / 3
+        articulation: {
+          precision: metrics.articulation?.precision || 0,
+          vowel_formation: metrics.articulation?.vowel_formation || 0,
+          consonant_precision: metrics.articulation?.consonant_precision || 0,
+          slurred_speech: metrics.articulation?.slurred_speech || 0
+        },
+        fluency: {
+          fluency_score: metrics.fluency?.fluency_score || 0,
+          words_per_minute: metrics.speech_rate || 0,
+          pause_rate: metrics.fluency?.pause_rate || 0
+        },
+        pitch_stability: metrics.pitch_stability || 0,
+        overallScore: ((metrics.clarity * 100) + 
+                      (metrics.volume_control * 100) + 
+                      ((1 - metrics.emotion?.hesitation || 0) * 100)) / 3
       };
 
       // Prepare assessment data

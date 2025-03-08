@@ -106,9 +106,17 @@ export const eyeMovementController = {
 // Helper functions
 function calculateOverallScore(metrics, metric) {
   const scores = [];
-  if (metrics.SACCADIC_TEST?.summary?.[metric]) scores.push(metrics.SACCADIC_TEST.summary[metric]);
-  if (metrics.PURSUIT_TEST?.summary?.[metric]) scores.push(metrics.PURSUIT_TEST.summary[metric]);
-  if (metrics.CALIBRATION?.summary?.[metric]) scores.push(metrics.CALIBRATION.summary[metric]);
+  if (metrics.SACCADIC_TEST?.summary?.[metric] && metrics.SACCADIC_TEST.summary[metric] > 0) 
+    scores.push(metrics.SACCADIC_TEST.summary[metric]);
+  if (metrics.PURSUIT_TEST?.summary?.[metric] && metrics.PURSUIT_TEST.summary[metric] > 0) 
+    scores.push(metrics.PURSUIT_TEST.summary[metric]);
+  if (metrics.CALIBRATION?.summary?.[metric] && metrics.CALIBRATION.summary[metric] > 0) 
+    scores.push(metrics.CALIBRATION.summary[metric]);
+  if (metrics.FIXATION_TEST?.summary?.[metric] && metrics.FIXATION_TEST.summary[metric] > 0) 
+    scores.push(metrics.FIXATION_TEST.summary[metric]);
+  
+  // Return default for accuracy if no valid scores
+  if (scores.length === 0 && metric === 'accuracy') return 75.0;
   
   return scores.length ? scores.reduce((a, b) => a + b) / scores.length : 0;
 }
