@@ -360,48 +360,66 @@ export const fetchAssessmentsByType = async (userId, type) => {
   }
 };
 
-export const generatePdfReport = async (userId, assessmentTypes = null) => {
+export const generatePdfReport = async (userId, assessmentData, returnBuffer = false) => {
   try {
-    // Use the API instance directly from api.js which already handles auth
-    console.log('Generating PDF report for userId:', userId);
-    console.log('Selected assessment types:', assessmentTypes);
-    
-    // Create params with proper formatting for backend
-    const params = {};
-    if (assessmentTypes && assessmentTypes.length > 0) {
-      // Remove any spaces and make sure assessment types are properly formatted
-      // Using "assessmentTypes" parameter name as expected by the backend
-      params.assessmentTypes = assessmentTypes.join(',');
+    // Check if assessmentData is an array (old format) or an object (new format)
+    if (Array.isArray(assessmentData)) {
+      console.log('Generating PDF report for userId:', userId);
+      console.log('Selected assessment types:', assessmentData);
+      
+      // Create params with proper formatting for backend
+      const params = {};
+      if (assessmentData && assessmentData.length > 0) {
+        // Remove any spaces and make sure assessment types are properly formatted
+        // Using "assessmentTypes" parameter name as expected by the backend
+        params.assessmentTypes = assessmentData.join(',');
+      }
+      
+      console.log('Requesting PDF with params:', params);
+      
+      // Fix: Changed route to match the backend expectation - removed userId from path
+      // The backend might be expecting to get the userId from the authenticated token
+      const response = await api.get(`/assessments/report`, {
+        params,
+        responseType: 'blob',
+        timeout: 30000
+      });
+      
+      console.log('Response received, status:', response.status);
+      
+      // If returnBuffer is true, return the PDF buffer instead of triggering download
+      if (returnBuffer) {
+        return response.data; // Return the buffer for email sending
+      } else {
+        // Create and trigger download
+        const pdfBlob = new Blob([response.data], { type: 'application/pdf' });
+        const downloadUrl = window.URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.setAttribute('download', `assessment-report-${userId}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        
+        // Remove the link after download starts
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(downloadUrl);
+        }, 100);
+        
+        return downloadUrl;
+      }
+    } else if (typeof assessmentData === 'object' && assessmentData !== null) {
+      // New format - use the exportAssessmentReportToPdf function from pdfExport.js
+      console.log('Generating PDF with local rendering for data:', Object.keys(assessmentData));
+      
+      // Import the function dynamically to avoid circular dependencies
+      const { exportAssessmentReportToPdf } = await import('../utils/pdfExport');
+      
+      const result = exportAssessmentReportToPdf(userId, assessmentData);
+      return result;
+    } else {
+      throw new Error('Invalid assessment data format');
     }
-    
-    console.log('Requesting PDF with params:', params);
-    
-    // Fix: Changed route to match the backend expectation - removed userId from path
-    // The backend might be expecting to get the userId from the authenticated token
-    const response = await api.get(`/assessments/report`, {
-      params,
-      responseType: 'blob',
-      timeout: 30000
-    });
-    
-    console.log('Response received, status:', response.status);
-    
-    // Create and trigger download
-    const pdfBlob = new Blob([response.data], { type: 'application/pdf' });
-    const downloadUrl = window.URL.createObjectURL(pdfBlob);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.setAttribute('download', `assessment-report-${userId}.pdf`);
-    document.body.appendChild(link);
-    link.click();
-    
-    // Remove the link after download starts
-    setTimeout(() => {
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-    }, 100);
-    
-    return downloadUrl;
   } catch (error) {
     console.error('Error generating PDF report:', error);
     console.error('Error response status:', error.response?.status);

@@ -41,36 +41,50 @@ const ExportReportPanel = ({ userId, assessmentTypes, fullAssessmentData = [] })
         return;
       }
       
-      // Make sure the format of assessment types matches what backend expects
-      // Using the actual assessment type values from the selectedTypes array
       console.log('Exporting report for types:', selectedTypes);
       
-      await generatePdfReport(userId, selectedTypes);
+      // Create assessment data object with only selected types
+      const filteredAssessmentData = {};
+      
+      // Map selected types to their data from fullAssessmentData
+      selectedTypes.forEach(type => {
+        const assessmentsOfType = fullAssessmentData.filter(assessment => assessment.type === type);
+        if (assessmentsOfType.length > 0) {
+          // Use the most recent assessment of this type
+          filteredAssessmentData[type] = assessmentsOfType.sort((a, b) => 
+            new Date(b.timestamp) - new Date(a.timestamp)
+          )[0];
+        }
+      });
+      
+      console.log('Filtered assessment data:', filteredAssessmentData);
+      
+      // Pass the filtered data along with user ID
+      await generatePdfReport(userId, filteredAssessmentData);
       
       setSuccess(true);
       setLoading(false);
     } catch (err) {
       console.error('Error generating PDF report:', err);
-      // Display the actual error message from the API if available
       setError(err.message || 'Failed to generate report. Please try again.');
       setLoading(false);
     }
   };
 
   // Show debugging info in dev mode
-  const showDebug = () => {
-    if (!import.meta.env.DEV) return null;
+  // const showDebug = () => {
+  //   if (!import.meta.env.DEV) return null;
     
-    return (
-      <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', fontSize: '0.75rem', borderRadius: 1 }}>
-        <Typography variant="caption" component="div" sx={{ fontWeight: 'bold' }}>Debug Info:</Typography>
-        <div>Selected Types: {selectedTypes.join(', ')}</div>
-        <div>All Types Count: {assessmentTypes.length}</div>
-        <div>Full Assessment Data: {fullAssessmentData.length} assessments</div>
-        <div>Available Type IDs: {assessmentTypes.map(t => t.type).join(', ')}</div>
-      </Box>
-    );
-  };
+  //   return (
+  //     <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', fontSize: '0.75rem', borderRadius: 1 }}>
+  //       <Typography variant="caption" component="div" sx={{ fontWeight: 'bold' }}>Debug Info:</Typography>
+  //       <div>Selected Types: {selectedTypes.join(', ')}</div>
+  //       <div>All Types Count: {assessmentTypes.length}</div>
+  //       <div>Full Assessment Data: {fullAssessmentData.length} assessments</div>
+  //       <div>Available Type IDs: {assessmentTypes.map(t => t.type).join(', ')}</div>
+  //     </Box>
+  //   );
+  // };
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -142,7 +156,7 @@ const ExportReportPanel = ({ userId, assessmentTypes, fullAssessmentData = [] })
       </Button>
       
       {/* Debug information in dev mode */}
-      {import.meta.env.DEV && showDebug()}
+      {/* {import.meta.env.DEV && showDebug()} */}
     </Paper>
   );
 };

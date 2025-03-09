@@ -1,6 +1,7 @@
 import express from 'express';
 import { eyeMovementController } from '../controllers/eyeMovementController.js';
 import { neckMobilityController } from '../controllers/neckMobilityController.js';
+import { sendReportEmail } from '../controllers/emailController.js';
 // ...existing imports...
 
 const router = express.Router();
@@ -16,6 +17,8 @@ router.get('/specialized-assessments/eye-movement/baseline/:userId', eyeMovement
 router.post('/specialized-assessments/neck-mobility', neckMobilityController.save);
 router.get('/specialized-assessments/neck-mobility/history', neckMobilityController.getHistory);
 router.get('/specialized-assessments/neck-mobility/baseline/:userId', neckMobilityController.getBaseline);
+
+router.post('/email/send-report', sendReportEmail);
 
 // ...other routes...
 

@@ -1,11 +1,11 @@
 import axios from 'axios';
+import dotenv from 'dotenv';
 
+dotenv.config();
 // Use the provided API key
-const GEMINI_API_KEY = 'AIzaSyC_9o4uCAR0TStMXBm-cPIWzTQB95XCWEY';
-const API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const API_BASE_URL = process.env.GEMINI_API_BASE_URL;
 const MODEL = 'gemini-2.0-flash'; // Use the free tier Gemini model
-
-console.log('Initializing AI service with API key ending with:', GEMINI_API_KEY.substring(GEMINI_API_KEY.length - 5));
 
 // Helper function to transform assessment data into the expected format
 function transformAssessmentsData(assessments) {

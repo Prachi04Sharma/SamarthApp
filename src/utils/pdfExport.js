@@ -7,7 +7,7 @@ import 'jspdf-autotable';
  * @param {string} patientName - Patient name for the PDF
  * @returns {void} - Triggers a PDF download
  */
-export const exportAiAnalysisToPdf = (analysisData, patientName = 'Patient') => {
+export const exportAiAnalysisToPdf = async (analysisData, patientName = 'Patient', returnBuffer = false) => {
   try {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -58,9 +58,178 @@ export const exportAiAnalysisToPdf = (analysisData, patientName = 'Patient') => 
     doc.text(splitDisclaimer, 20, yPos);
     
     // Save the document
-    doc.save(`neurological_assessment_${formatForFilename(patientName)}_${formatDate()}.pdf`);
+    if (returnBuffer) {
+      const pdfBuffer = doc.output('arraybuffer');
+      return pdfBuffer; // Return the buffer for email sending
+    } else {
+      doc.save(`neurological_assessment_${formatForFilename(patientName)}_${formatDate()}.pdf`);
+    }
     
     console.log('AI Analysis PDF generated successfully');
+    return true;
+  } catch (error) {
+    console.error('Error exporting AI analysis to PDF:', error);
+    throw error;
+  }
+};
+
+/**
+ * Export assessment data to PDF
+ * @param {string} userId - The user ID
+ * @param {Object} assessmentData - The assessment data
+ * @returns {boolean} - Whether the export was successful
+ */
+export const exportAssessmentReportToPdf = async (userId, assessmentData, returnBuffer = false) => {
+  try {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const date = new Date().toLocaleDateString();
+    
+    // Document title
+    doc.setFontSize(20);
+    doc.setTextColor(0, 51, 102);
+    doc.text('Samarth Health Assessment Report', pageWidth / 2, 20, { align: 'center' });
+    
+    // Document metadata
+    doc.setFontSize(12);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Patient ID: ${userId}`, 20, 30);
+    doc.text(`Date: ${date}`, 20, 37);
+    doc.text(`Report ID: ${generateReportId()}`, 20, 44);
+    
+    // Summary section
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Assessment Summary', 20, 60);
+    
+    // Create a summary table
+    const tableData = [];
+    let yPos = 70;
+    
+    // Add rows for each assessment type
+    Object.entries(assessmentData).forEach(([type, data]) => {
+      if (!data) return;
+      
+      const displayName = getAssessmentDisplayName(type);
+      const date = new Date(data.timestamp).toLocaleDateString();
+      let metrics = 'No metrics available';
+      
+      if (data.metrics) {
+        // Format metrics based on assessment type
+        switch (type) {
+          case 'tremor':
+            metrics = `Severity: ${data.metrics.severity || 'N/A'}, Frequency: ${data.metrics.tremor_frequency || 'N/A'} Hz`;
+            break;
+          case 'speech':
+            metrics = `Clarity: ${data.metrics.clarity?.score || 'N/A'}/10, Overall: ${data.metrics.overallScore || 'N/A'}/10`;
+            break;
+          case 'responseTime':
+            metrics = `Avg Response: ${data.metrics.averageResponseTime || 'N/A'} ms`;
+            break;
+          default:
+            metrics = 'See details below';
+        }
+      }
+      
+      tableData.push([displayName, date, metrics]);
+    });
+    
+    // Draw table if there's data
+    if (tableData.length > 0) {
+      doc.autoTable({
+        startY: yPos,
+        head: [['Assessment Type', 'Date', 'Key Metrics']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [0, 51, 102],
+          textColor: [255, 255, 255]
+        },
+        styles: {
+          overflow: 'linebreak',
+        },
+      });
+      
+      yPos = doc.previousAutoTable.finalY + 20;
+    }
+    
+    // Add detailed sections for each assessment type
+    Object.entries(assessmentData).forEach(([type, data]) => {
+      if (!data) return;
+      
+      // Check if we need a new page
+      if (yPos > doc.internal.pageSize.getHeight() - 100) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      const displayName = getAssessmentDisplayName(type);
+      
+      doc.setFontSize(14);
+      doc.setTextColor(0, 51, 102);
+      doc.text(`${displayName} Assessment`, 20, yPos);
+      
+      yPos += 10;
+      
+      // Add assessment-specific data
+      if (data.metrics) {
+        doc.setFontSize(11);
+        doc.setTextColor(0, 0, 0);
+        
+        // Create a table for the metrics
+        const metricsData = [];
+        Object.entries(data.metrics).forEach(([key, value]) => {
+          if (typeof value === 'object') {
+            Object.entries(value).forEach(([subKey, subValue]) => {
+              if (typeof subValue !== 'object') {
+                metricsData.push([`${formatMetricName(key)}: ${formatMetricName(subKey)}`, subValue.toString()]);
+              }
+            });
+          } else if (typeof value !== 'object' && value !== null && value !== undefined) {
+            metricsData.push([formatMetricName(key), value.toString()]);
+          }
+        });
+        
+        if (metricsData.length > 0) {
+          doc.autoTable({
+            startY: yPos,
+            head: [['Metric', 'Value']],
+            body: metricsData,
+            theme: 'grid',
+            headStyles: {
+              fillColor: [220, 220, 220],
+              textColor: [0, 0, 0]
+            },
+            styles: {
+              overflow: 'linebreak',
+            },
+          });
+          
+          yPos = doc.previousAutoTable.finalY + 15;
+        }
+      }
+    });
+    
+    // Add disclaimer
+    if (yPos > doc.internal.pageSize.getHeight() - 50) {
+      doc.addPage();
+      yPos = 20;
+    }
+    
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    const disclaimer = "This assessment report is intended for informational purposes only and should not replace professional medical advice. Please consult with a healthcare professional for proper diagnosis and treatment.";
+    const splitDisclaimer = doc.splitTextToSize(disclaimer, pageWidth - 40);
+    doc.text(splitDisclaimer, 20, doc.internal.pageSize.getHeight() - 30);
+    
+    // Save the document
+    if (returnBuffer) {
+      return doc.output('arraybuffer'); // Return buffer instead of downloading
+    }
+    
+    doc.save(`samarth_assessment_report_${userId}_${formatDate()}.pdf`);
+    
+    console.log('Assessment Report PDF generated successfully');
     return true;
   } catch (error) {
     console.error('Error generating PDF:', error);
@@ -123,6 +292,38 @@ function addDisorderSection(doc, title, data, yPosition) {
       0: { cellWidth: 'auto' }
     }
   });
+}
+
+/**
+ * Get a user-friendly name for an assessment type
+ * @param {string} type - The assessment type
+ * @returns {string} - The display name
+ */
+function getAssessmentDisplayName(type) {
+  const displayNames = {
+    tremor: 'Tremor',
+    speech: 'Speech Pattern',
+    responseTime: 'Response Time',
+    neckMobility: 'Neck Mobility',
+    gait: 'Gait Analysis',
+    fingerTapping: 'Finger Tapping',
+    facialSymmetry: 'Facial Symmetry',
+    eyeMovement: 'Eye Movement'
+  };
+  
+  return displayNames[type] || type;
+}
+
+/**
+ * Format metric name for display
+ * @param {string} name - The metric name
+ * @returns {string} - The formatted name
+ */
+function formatMetricName(name) {
+  return name
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .replace(/^./, str => str.toUpperCase());
 }
 
 // Helper functions
