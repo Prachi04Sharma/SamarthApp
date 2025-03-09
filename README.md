@@ -30,9 +30,16 @@ Below are snapshots from the SAMARTH App:
 ### Tremor Analysis
 ![{D1DC8793-A894-4CE8-B9C1-EAD6A5D20B9E}](https://github.com/user-attachments/assets/3ea0d0f3-469f-46ca-8dbe-96c114ba00cb)
 ![{EDFEAA42-C09B-47E9-A5D1-1A397035B967}](https://github.com/user-attachments/assets/0c1a59b7-df57-4ab3-9d5a-4d41709160bd)
-
-
 *Hand tremor frequency and amplitude visualization with FFT analysis*
+
+### Finger Tap Test
+![Uploading {9D6D3903-0B48-405B-9D7C-3BD679B1722A}.png…]()
+
+
+### Gait Analysis
+![{D720F301-E2E8-4263-BF32-20A814B90477}](https://github.com/user-attachments/assets/f0503e1d-6ef5-4563-abcb-fdf213a7da9a)
+
+
 
 ### Analytics Dashboard
 ![{6B030F41-B318-42DC-B23F-0281623D8A05}](https://github.com/user-attachments/assets/c9eec1fc-04fa-40bd-b9bc-0e20cb851ef3)
@@ -43,6 +50,8 @@ Below are snapshots from the SAMARTH App:
 ### Assessment Report
 ![{98792714-E466-4878-9EFA-020A9A7E9A40}](https://github.com/user-attachments/assets/566998c9-3f18-4f1f-8189-4eb1f5548179)
 ![{D848FA46-97DD-4778-89DA-71DA1E84B249}](https://github.com/user-attachments/assets/af1c719f-cb15-4bbf-8290-22d807543b26)
+![{D399F85F-16D4-4945-890D-A7932F461691}](https://github.com/user-attachments/assets/c8b86a88-4dde-4b59-8766-54fc148aa447)
+
 
 *Sample assessment report with AI-powered insights*
 
