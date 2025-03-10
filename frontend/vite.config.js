@@ -28,6 +28,9 @@ export default defineConfig({
             purpose: 'any maskable'
           }
         ]
+      },
+      workbox: {
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // Increased cache limit to 6MB
       }
     }),
     svgr({
@@ -41,11 +44,14 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/analyze': {
-        target: 'http://localhost:8000',
+        target: 'https://samarth-backend-3puh.onrender.com',
         changeOrigin: true,
         secure: false,
         ws: true
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 2000, // Avoid warnings for large chunks
   }
 })
