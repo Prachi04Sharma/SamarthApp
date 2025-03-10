@@ -415,3 +415,27 @@ class EyeTracker:
             quality_scores.append((position_smoothness + velocity_smoothness) / 2)
             
         return quality_scores
+
+    def detect_nystagmus(self, positions):
+        """Detect nystagmus-like eye movements characterized by rapid oscillations."""
+        try:
+            if not positions or len(positions) < 10:
+                return None
+                
+            positions_array = np.array(positions)
+            
+            # Calculate displacement between consecutive frames
+            displacements = np.diff(positions_array, axis=0)
+            
+            # Calculate directional changes
+            directions = np.sign(displacements)
+            direction_changes = np.sum(np.abs(np.diff(directions, axis=0)), axis=1)
+            
+            # Normalize by length of sequence to get a score between 0 and 1
+            nystagmus_score = np.mean(direction_changes) / 2.0
+            
+            return float(nystagmus_score)
+            
+        except Exception as e:
+            logger.error(f"Error detecting nystagmus: {str(e)}")
+            return None
