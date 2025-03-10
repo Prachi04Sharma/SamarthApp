@@ -16,7 +16,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: 'https://samarth-app.vercel.app' || 'http://localhost:5173',
   credentials: true
 }));
 
@@ -40,6 +40,10 @@ app.use((req, res, next) => {
     success: false,
     error: `Route not found: ${req.method} ${req.url}`
   });
+});
+
+app.get("/", (req, res) => {
+  res.send("Server is running.");
 });
 
 // Connect to MongoDB
