@@ -10,6 +10,7 @@ import mediapipe as mp
 import io
 import tempfile
 import os
+import uvicorn
 
 from .models.face_analysis import FaceAnalyzer
 from .models.eye_tracking import EyeTracker
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # Define CORS settings separately so they can be reused
-CORS_ORIGINS = ["http://localhost:5173"]  # Your frontend URL
+CORS_ORIGINS = ["http://localhost:5173", "https://samarth-web.vercel.app"]  # Your frontend URLs
 CORS_METHODS = ["GET", "POST", "OPTIONS"]
 CORS_HEADERS = ["*"]
 
@@ -54,7 +55,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             "detail": str(exc)
         },
         headers={
-            "Access-Control-Allow-Origin": "http://localhost:5173",
+            "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Credentials": "true"
         }
     )
@@ -69,7 +70,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "detail": str(exc.detail)
         },
         headers={
-            "Access-Control-Allow-Origin": "http://localhost:5173",
+            "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Credentials": "true"
         }
     )
@@ -419,9 +420,14 @@ async def analyze_speech_options():
         status_code=200,
         content={"message": "OK"},
         headers={
-            "Access-Control-Allow-Origin": "http://localhost:5173",
+            "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "POST, OPTIONS",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Credentials": "true",
         }
     )
+
+# Add this at the end of the file to run the app on 0.0.0.0
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)
