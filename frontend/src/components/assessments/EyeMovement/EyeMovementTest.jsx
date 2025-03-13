@@ -335,7 +335,18 @@ const EyeMovement = ({ userId, onComplete }) => {
       await startRecording();
     } catch (err) {
       console.error('Failed to start recording:', err);
-      // Show error in UI
+      
+      // Display user-friendly error message based on the type of error
+      if (err.message.includes('mimeType is not supported')) {
+        // Compatibility issue
+        setError('Your browser does not support the required video recording features. Please try using Chrome or Firefox on desktop.');
+      } else if (err.message.includes('Permission denied') || err.message.includes('NotAllowedError')) {
+        // Permission issue
+        setError('Camera access denied. Please enable camera permissions for this site.');
+      } else {
+        // General error
+        setError(`Recording failed: ${err.message}`);
+      }
     }
   };
 

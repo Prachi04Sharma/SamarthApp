@@ -134,10 +134,10 @@ async def analyze_face(file: UploadFile):
         logger.error(f"Error analyzing face: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-def save_video_to_temp(contents: bytes) -> str:
+def save_video_to_temp(contents: bytes, extension: str = ".webm") -> str:
     """Save video bytes to a temporary file."""
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp:
             tmp.write(contents)
             return tmp.name
     except Exception as e:
@@ -216,10 +216,17 @@ def extract_frames(video_path: str):
 async def analyze_eyes(file: UploadFile = File(...), phase: str = Form(...)):
     """Analyze eye movement."""
     try:
-        logger.info(f"Received eye analysis request - Phase: {phase}")
-        
+        # Read the file content
         contents = await file.read()
-        video_path = save_video_to_temp(contents)
+        
+        # Save to temporary file with appropriate extension
+        file_extension = ".webm"  # Default
+        if file.filename and file.filename.endswith(".mp4"):
+            file_extension = ".mp4"
+        
+        video_path = save_video_to_temp(contents, file_extension)
+        
+        # Extract frames from the video file
         frames = extract_frames(video_path)
         
         if not frames:

@@ -64,38 +64,59 @@ export const useEyeTracking = (userId, videoRef) => {
       }
 
       chunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(videoRef.current.srcObject, {
-        mimeType: 'video/webm;codecs=vp9',
-        videoBitsPerSecond: 2500000
-      });
       
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
+      // Updated MediaRecorder creation with proper fallback support
+      let options = {};
+      
+      // Try different MIME types in order of preference
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+        options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 2500000 };
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 2500000 };
+      } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        options = { mimeType: 'video/webm' };
+      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        options = { mimeType: 'video/mp4' };
+      }
+      // No options specified means browser will choose its default
+      
+      try {
+        const mediaRecorder = new MediaRecorder(videoRef.current.srcObject, options);
+        
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            chunksRef.current.push(e.data);
+          }
+        };
 
-      mediaRecorder.onstop = async () => {
-        try {
-          const blob = new Blob(chunksRef.current, { 
-            type: 'video/webm'
-          });
-          const results = await processPhase(blob, phase);
-          resolve(results);
-        } catch (err) {
-          reject(err);
-        }
-      };
+        mediaRecorder.onstop = async () => {
+          try {
+            // Create blob with appropriate type that matches what we recorded with
+            const mimeType = options.mimeType || 'video/webm'; // Default fallback
+            const blob = new Blob(chunksRef.current, { type: mimeType });
+            const results = await processPhase(blob, phase);
+            resolve(results);
+          } catch (err) {
+            reject(err);
+          }
+        };
 
-      mediaRecorder.start(1000); // Collect data every second
-      mediaRecorderRef.current = mediaRecorder;
+        mediaRecorder.onerror = (event) => {
+          reject(new Error(`MediaRecorder error: ${event.error.name}`));
+        };
 
-      // Stop recording after phase duration
-      setTimeout(() => {
-        if (mediaRecorder.state === 'recording') {
-          mediaRecorder.stop();
-        }
-      }, config.duration);
+        mediaRecorder.start(1000); // Collect data every second
+        mediaRecorderRef.current = mediaRecorder;
+
+        // Stop recording after phase duration
+        setTimeout(() => {
+          if (mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+          }
+        }, config.duration);
+      } catch (err) {
+        reject(new Error(`Failed to create MediaRecorder: ${err.message}`));
+      }
     });
   };
 
