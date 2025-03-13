@@ -330,9 +330,14 @@ export const analyzeSpeech = () => {
 // Initialize TensorFlow
 initTensorFlow().catch(console.error);
 
-const ML_SERVICE_URL = 'http://localhost:8000' || "https://smarth-ml-service.onrender.com";
+const ML_SERVICE_URL = import.meta.env.DEV 
+  ? 'http://localhost:8000' 
+  : import.meta.env.VITE_ML_SERVICE_URL || "https://smarth-ml-service.onrender.com";
+
 export const MLService = {
-  BASE_URL: 'http://localhost:8000' || "https://smarth-ml-service.onrender.com",
+  BASE_URL: import.meta.env.DEV 
+    ? 'http://localhost:8000' 
+    : import.meta.env.VITE_ML_SERVICE_URL || "https://smarth-ml-service.onrender.com",
 
   analyzeEyes: async function(videoBlob, phase) {
     const formData = new FormData();
